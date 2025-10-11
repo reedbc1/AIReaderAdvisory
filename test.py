@@ -1,10 +1,8 @@
 # import dvd json
 import json
-
-### Get json from vega API ###
-
 import requests
 
+### Get json from vega API ###
 def vega_api():
   url = "https://na2.iiivega.com/api/search-result/search/format-groups"
 
@@ -109,7 +107,9 @@ def filter_result(result):
 
 # get editions info using editionsId
 def get_editions(editionsId):
-  import requests
+  # ideas - async with rate limiting, 
+  #       - generate and use different user ids
+  #       - write to json file periodically to save progress made by api usage
 
   url = f"https://na2.iiivega.com/api/search-result/editions/{editionsId}"
 
