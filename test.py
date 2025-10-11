@@ -225,6 +225,7 @@ def add_editions_info(result, editions_info):
    
 
 ### apply functions to every record in file
+# ideas - show status updates. see ideas on above functions
 def apply_to_results(results):
 
   data = []
@@ -292,10 +293,11 @@ def test():
   # with open("locations.json", "w", encoding="utf-8") as f:
   #   json.dump(locations, f, ensure_ascii=False, indent=2)
 
-  data = apply_to_results(results)
-  with open("wrdvds_full", "w") as f:
-     json.dump(data, f, indent=2)
-  print("Done!")
+  ## get additional info for results
+  # data = apply_to_results(results)
+  # with open("wrdvds_full", "w") as f:
+  #    json.dump(data, f, indent=2)
+  # print("Done!")
 
 
 ### testing ###
