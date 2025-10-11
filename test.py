@@ -3,12 +3,67 @@ import json
 
 ### Get json from vega API ###
 
+import requests
+
+def vega_api():
+  url = "https://na2.iiivega.com/api/search-result/search/format-groups"
+
+  headers = {
+      "authority": "na2.iiivega.com",
+      "method": "POST",
+      "path": "/api/search-result/search/format-groups",
+      "scheme": "https",
+      "accept": "application/json, text/plain, */*",
+      "accept-encoding": "gzip, deflate, br, zstd",
+      "accept-language": "en-US,en;q=0.9",
+      "anonymous-user-id": "c6aeabfe-dcc0-4e1a-8fa2-3934d465cb70",
+      "api-version": "2",
+      "iii-customer-domain": "slouc.na2.iiivega.com",
+      "iii-host-domain": "slouc.na2.iiivega.com",
+      "origin": "https://slouc.na2.iiivega.com",
+      "priority": "u=1, i",
+      "referer": "https://slouc.na2.iiivega.com/",
+      "sec-ch-ua": '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": '"Windows"',
+      "sec-fetch-dest": "empty",
+      "sec-fetch-mode": "cors",
+      "sec-fetch-site": "same-site",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+      "content-type": "application/json"
+  }
+
+  data = {
+      "searchText": "*",
+      "sorting": "relevance",
+      "sortOrder": "asc",
+      "searchType": "everything",
+      "universalLimiterIds": ["at_library"],
+      "materialTypeIds": ["33"],
+      "locationIds": ["59"],
+      "pageNum": 0,
+      "pageSize": 40,
+      "resourceType": "FormatGroup"
+  }
+
+  response = requests.post(url, headers=headers, data=json.dumps(data))
+
+  if response.ok:
+      print("✅ Success!")
+      data = response.json()
+      with open("vega_results.json", "w", encoding="utf-8") as f:
+          json.dump(data, f, indent=2, ensure_ascii=False)
+
+  else:
+      print(f"❌ Error {response.status_code}")
+      print(response.text)
+
 
 ### Extract relevevant info from json ###
 def load_json():
 
   # Load JSON from a local file
-  with open("dvds/wrdvds.json", "r") as f:
+  with open("dvds/wrdvds.json", "r", encoding="utf-8") as f:
     data = json.load(f)
 
   # parse dvd json for relevant info
@@ -60,7 +115,8 @@ def test():
 
 
 result = test()
-print(result)
+
+vega_api()
 
 ### Get MARC record info from API ###
 

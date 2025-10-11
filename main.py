@@ -162,7 +162,6 @@ def vega_api():
         data = response.json()
         with open("vega_results.json", "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        print(data)
     else:
         print("❌ Request failed:", response.status_code, response.text)
 
