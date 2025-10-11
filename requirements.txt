@@ -2,3 +2,4 @@ openai
 dotenv
 python-dotenv
 requests
+pandas

@@ -83,6 +83,128 @@ def query():
     )
     print(response)
 
-query()
+# query()
 
+def create_json():
+    import pandas as pd
+    import json
+    
+    # Load your exported SimplyReports CSV
+    df = pd.read_csv("csv/wr_items.csv")
+    
+    # Convert to JSON records
+    records = df.to_dict(orient='records')
+    
+    # Save to file
+    with open('library_books.json', 'w', encoding='utf-8') as f:
+        json.dump(records, f, ensure_ascii=False, indent=2)
 
+def enrich_data():
+    import requests
+    import pandas as pd
+    import json
+    import time
+    
+    # --- CONFIGURATION ---
+    INPUT_CSV = "csv/wr_items.csv"
+    OUTPUT_JSON = "library_books_enriched.json"
+    SLEEP_BETWEEN_REQUESTS = 0.5  # seconds, to avoid rate limits
+    
+    # --- LOAD SIMPLYREPORTS EXPORT ---
+    df = pd.read_csv(INPUT_CSV)
+    df = df[0:10]
+    print(type(df["ISBN"][0]))
+    df['ISBN'] = df['ISBN'].apply(lambda x: '%.9f' % x)
+    df["ISBN"] = [item.split(".")[0] for item in df["ISBN"]]
+    print(df["ISBN"])
+    
+    # Try to detect likely column names automatically
+    possible_isbn_cols = [col for col in df.columns if "isbn" in col.lower()]
+    possible_title_cols = [col for col in df.columns if "title" in col.lower()]
+    possible_author_cols = [col for col in df.columns if "author" in col.lower()]
+    
+    isbn_col = possible_isbn_cols[0] if possible_isbn_cols else None
+    title_col = possible_title_cols[0] if possible_title_cols else None
+    author_col = possible_author_cols[0] if possible_author_cols else None
+    
+    print(f"Using ISBN column: {isbn_col}, Title column: {title_col}, Author column: {author_col}")
+    
+    # --- FUNCTION TO QUERY GOOGLE BOOKS API ---
+    def get_book_data(isbn=None, title=None, author=None):
+        if isbn:
+            query = f"isbn:{isbn}"
+        elif title:
+            query = f"intitle:{title}"
+            if author:
+                query += f"+inauthor:{author}"
+        else:
+            return None
+    
+        url = f"https://www.googleapis.com/books/v1/volumes?q={query}"
+        response = requests.get(url)
+        print(response)
+        if not response.ok:
+            return None
+    
+        data = response.json()
+        if "items" not in data:
+            return None
+    
+        info = data["items"][0]["volumeInfo"]
+    
+        return {
+            "title": info.get("title"),
+            "authors": info.get("authors", []),
+            "publishedDate": info.get("publishedDate"),
+            "publisher": info.get("publisher"),
+            "pageCount": info.get("pageCount"),
+            "categories": info.get("categories", []),
+            "description": info.get("description"),
+            "industryIdentifiers": info.get("industryIdentifiers", []),
+        }
+    
+    # --- ENRICH DATA ---
+    records = []
+    for _, row in df.iterrows():
+        isbn = row[isbn_col] if isbn_col else None
+        title = row[title_col] if title_col else None
+        author = row[author_col] if author_col else None
+    
+        book_data = get_book_data(isbn=isbn, title=title, author=author)
+        if book_data:
+            record = {
+                "local_title": title,
+                "local_author": author,
+                "local_isbn": isbn,
+                "google_books_info": book_data
+            }
+            records.append(record)
+            print(f"✅ Found: {book_data['title']}")
+        else:
+            print(f"❌ No data found for: {title}")
+    
+        time.sleep(SLEEP_BETWEEN_REQUESTS)
+    
+    # --- SAVE TO JSON ---
+    print(len(records))
+    with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
+        json.dump(records, f, ensure_ascii=False, indent=2)
+    
+    print(f"\n✨ Enriched data saved to {OUTPUT_JSON}")
+
+# enrich_data()
+
+import json
+
+with open("library_books_enriched.json", "r", encoding="utf-8") as f:
+    books = json.load(f)
+
+def book_to_text(book):
+    return f"""Title: {book['local_title']}
+        Author: {book['local_author']}
+        Categories: {', '.join(book.get('categories', []))}
+        Summary: {book.get('description', 'No summary available')}"""
+
+book_texts = [book_to_text(book) for book in books]
+
+print(book_texts)
