@@ -1,0 +1,141 @@
+{
+  "available": [
+    {
+      "code": "40",
+      "label": "SLCL Bridgeton Trails",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Bridgeton Trails",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "40"
+    },
+    {
+      "code": "42",
+      "label": "SLCL Daniel Boone",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Daniel Boone",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "42"
+    },
+    {
+      "code": "43",
+      "label": "SLCL Eureka Hills",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Eureka Hills",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "43"
+    },
+    {
+      "code": "44",
+      "label": "SLCL Florissant Valley",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Florissant Valley",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "44"
+    },
+    {
+      "code": "45",
+      "label": "SLCL Grand Glaize",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Grand Glaize",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "45"
+    },
+    {
+      "code": "46",
+      "label": "SLCL Grant's View",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Grant's View",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "46"
+    },
+    {
+      "code": "49",
+      "label": "SLCL Jamestown Bluffs",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Jamestown Bluffs",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "49"
+    },
+    {
+      "code": "50",
+      "label": "SLCL Lewis & Clark",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Lewis & Clark",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "50"
+    },
+    {
+      "code": "51",
+      "label": "SLCL Meramec Valley",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Meramec Valley",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "51"
+    },
+    {
+      "code": "52",
+      "label": "SLCL Mid-County",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Mid-County",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "52"
+    },
+    {
+      "code": "53",
+      "label": "SLCL Natural Bridge",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Natural Bridge",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "53"
+    },
+    {
+      "code": "48",
+      "label": "SLCL Parkview",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Parkview",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "48"
+    },
+    {
+      "code": "55",
+      "label": "SLCL Prairie Commons",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Prairie Commons",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "55"
+    },
+    {
+      "code": "56",
+      "label": "SLCL Rock Road",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Rock Road",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "56"
+    },
+    {
+      "code": "57",
+      "label": "SLCL Samuel Sachs",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Samuel Sachs",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "57"
+    },
+    {
+      "code": "58",
+      "label": "SLCL Thornhill",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Thornhill",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "58"
+    },
+    {
+      "code": "59",
+      "label": "SLCL Weber Road",
+      "isPatronHome": false,
+      "itemLocationLabel": "SLCL Weber Road",
+      "callNumber": "J DVD Fluffy",
+      "itemLocationCode": "59"
+    }
+  ],
+  "unavailable": []
+}

@@ -45,7 +45,7 @@ def lookup():
     print(results)
 
     formatted_results = format_results(results.data)
-    '\n'.join('\n'.join(c.text) for c in result.content
+    '\n'.join('\n'.join(c.text) for c in results.content
               for result in results.data)
 
     completion = client.chat.completions.create(
