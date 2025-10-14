@@ -3,3 +3,5 @@ dotenv
 python-dotenv
 requests
 pandas
+aiohttp
+async_timeout

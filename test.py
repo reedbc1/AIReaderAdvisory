@@ -1,306 +1,173 @@
-# import dvd json
+import aiohttp
+import asyncio
 import json
-import requests
+from tqdm.asyncio import tqdm_asyncio
+import async_timeout
+import os
 
-### Get json from vega API ###
-def vega_api():
-  url = "https://na2.iiivega.com/api/search-result/search/format-groups"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) "
+                  "Chrome/141.0.0.0 Safari/537.36",
+    "authority": "na2.iiivega.com",
+    "method": "GET",
+    "scheme": "https",
+    "accept": "application/json, text/plain, */*",
+    "accept-encoding": "gzip, deflate, br, zstd",
+    "accept-language": "en-US,en;q=0.9",
+    "anonymous-user-id": "c6aeabfe-dcc0-4e1a-8fa2-3934d465cb70",
+    "api-version": "1",
+    "iii-customer-domain": "slouc.na2.iiivega.com",
+    "iii-host-domain": "slouc.na2.iiivega.com",
+    "origin": "https://slouc.na2.iiivega.com",
+    "priority": "u=1, i",
+    "referer": "https://slouc.na2.iiivega.com/",
+    "sec-ch-ua": '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-site"
+}
 
-  headers = {
-      "authority": "na2.iiivega.com",
-      "method": "POST",
-      "path": "/api/search-result/search/format-groups",
-      "scheme": "https",
-      "accept": "application/json, text/plain, */*",
-      "accept-encoding": "gzip, deflate, br, zstd",
-      "accept-language": "en-US,en;q=0.9",
-      "anonymous-user-id": "c6aeabfe-dcc0-4e1a-8fa2-3934d465cb70",
-      "api-version": "2",
-      "iii-customer-domain": "slouc.na2.iiivega.com",
-      "iii-host-domain": "slouc.na2.iiivega.com",
-      "origin": "https://slouc.na2.iiivega.com",
-      "priority": "u=1, i",
-      "referer": "https://slouc.na2.iiivega.com/",
-      "sec-ch-ua": '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
-      "sec-ch-ua-mobile": "?0",
-      "sec-ch-ua-platform": '"Windows"',
-      "sec-fetch-dest": "empty",
-      "sec-fetch-mode": "cors",
-      "sec-fetch-site": "same-site",
-      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-      "content-type": "application/json"
-  }
-
-  data = {
-      "searchText": "*",
-      "sorting": "relevance",
-      "sortOrder": "asc",
-      "searchType": "everything",
-      "universalLimiterIds": ["at_library"],
-      "materialTypeIds": ["33"],
-      "locationIds": ["59"],
-      "pageNum": 0,
-      "pageSize": 40,
-      "resourceType": "FormatGroup"
-  }
-
-  response = requests.post(url, headers=headers, data=json.dumps(data))
-
-  if response.ok:
-      print("✅ Success!")
-      data = response.json()
-      with open("vega_results.json", "w", encoding="utf-8") as f:
-          json.dump(data, f, indent=2, ensure_ascii=False)
-
-  else:
-      print(f"❌ Error {response.status_code}")
-      print(response.text)
+API_BASE = "https://na2.iiivega.com/api/search-result/editions/"
+REQUESTS_PER_SECOND = 2
+MAX_CONCURRENT = 10
+MAX_RETRIES = 3
+semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+RESUME_FILE = "enhanced_results.jsonl"
+OUTPUT_FILE = "enhanced_results.json"  # final combined JSON
 
 
-### Extract relevevant info from json ###
-def load_json():
-
-  # Load JSON from a local file
-  with open("dvds/wrdvds.json", "r", encoding="utf-8") as f:
-    data = json.load(f)
-
-  # parse dvd json for relevant info
-  results = data.get("data", [{}])
-  return results
-
-
-# get first result for example
-def get_first_result(results):
-  first_result = results[0]
-  return first_result
-
-## The following functions would be called to each individual record
-# get relevant json info
-def filter_result(result):
-
-  id = result.get("id")
-  title = result.get("title")
-  publicationDate = result.get("publicationDate")
-  # get author if record is book
-
-  # make materialTabs for reference
-  materialTabs = result.get("materialTabs", [{}])[0]
-
-  # using materialTabs
-  materialType = materialTabs.get("name")
-  callNumber = materialTabs.get("callNumber")
-
-  # editions_id for MARC record
-  editionsId = materialTabs.get("editions")[0] \
-    .get("id")
-
-  return {
-      "id": id,
-      "title": title,
-      "publicationDate": publicationDate,
-      "materialType": materialType,
-      "callNumber": callNumber,
-      "editionsId": editionsId
-  }
-
-### Get editions info from API ###
-
-# get editions info using editionsId
-def get_editions(editionsId):
-  # ideas - async with rate limiting, 
-  #       - generate and use different user ids
-  #       - write to json file periodically to save progress made by api usage
-
-  url = f"https://na2.iiivega.com/api/search-result/editions/{editionsId}"
-
-  headers = {
-      "authority": "na2.iiivega.com",
-      "method": "GET",
-      "path": f"/api/search-result/editions/{editionsId}",
-      "scheme": "https",
-      "accept": "application/json, text/plain, */*",
-      "accept-encoding": "gzip, deflate, br, zstd",
-      "accept-language": "en-US,en;q=0.9",
-      "anonymous-user-id": "c6aeabfe-dcc0-4e1a-8fa2-3934d465cb70",
-      "api-version": "1",
-      "iii-customer-domain": "slouc.na2.iiivega.com",
-      "iii-host-domain": "slouc.na2.iiivega.com",
-      "origin": "https://slouc.na2.iiivega.com",
-      "priority": "u=1, i",
-      "referer": "https://slouc.na2.iiivega.com/",
-      "sec-ch-ua": '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
-      "sec-ch-ua-mobile": "?0",
-      "sec-ch-ua-platform": '"Windows"',
-      "sec-fetch-dest": "empty",
-      "sec-fetch-mode": "cors",
-      "sec-fetch-site": "same-site",
-      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
-  }
-
-  # Make the GET request
-  response = requests.get(url, headers=headers)
-
-  # Check the response status
-  print(f"Status: {response.status_code}")
-
-  # Print the JSON data if available
-  try:
-      # load json from response
-      data = response.json()
-
-      # make json pretty
-      # data_string = json.dumps(data, ensure_ascii=False, indent=2)
-
-      # # print pretty json
-      # print(data_string)
-
-      # return json as dict
-      return data
-  except ValueError:
-      print("Response is not valid JSON.")
-      print(response.text)
-      return None
-
-# parse editions
-# is this in the right format for the ai?
-def parse_editions(editions):
-   edition = editions.get("edition", {})
-
-   keys = {"subjTopicalTerm", "subjGenre", "noteSummary"}
-   edition_filtered = {k: v for k, v in edition.items() if k in keys}
-
-   rename_map = {"subjTopicalTerm": "subject", "subjGenre": "genre", "noteSummary": "summary"}
-   edition_renamed = {rename_map.get(k, k): v for k, v in edition_filtered.items()} 
-
-   return edition_renamed
+async def get_edition_async(edition_id, session):
+    """Fetch a single edition with retries and rate limiting."""
+    for attempt in range(1, MAX_RETRIES + 1):
+        async with semaphore:
+            try:
+                await asyncio.sleep(1 / REQUESTS_PER_SECOND)
+                async with async_timeout.timeout(15):
+                    url = f"{API_BASE}{edition_id}"
+                    async with session.get(url, headers=HEADERS) as resp:
+                        if resp.status != 200:
+                            raise aiohttp.ClientError(f"Status {resp.status}")
+                        data = await resp.json()
+                        return edition_id, data
+            except Exception as e:
+                if attempt == MAX_RETRIES:
+                    print(f"❌ Failed {edition_id} after {MAX_RETRIES} attempts: {e}")
+                    return edition_id, None
+                await asyncio.sleep(attempt * 2)  # exponential backoff
 
 
-### get locations info using id ###
-# not using currently since dvds are all available at one location
-def get_locations(id, materialType):
+def parse_and_flatten_edition(edition, sep='.'):
+    """Extracts, flattens, and processes edition metadata."""
+    data = edition.get("edition", {})
+    extracted = {
+        "subjects": {k: v for k, v in data.items() if k.startswith("subj")},
+        "notes": {k: v for k, v in data.items() if k.startswith("note")},
+        "contributors": data.get("contributors", [])
+    }
 
-  url = f"https://na2.iiivega.com/api/search-result/drawer/format-groups/{id}/locations?tab={materialType}"
+    def flatten_dict(d, parent_key=''):
+        items = []
+        for k, v in d.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+            if isinstance(v, dict):
+                items.extend(flatten_dict(v, new_key).items())
+            else:
+                items.append((new_key, v))
+        return dict(items)
 
-  headers = {
-      "authority": "na2.iiivega.com",
-      "method": "GET",
-      "path": f"/api/search-result/drawer/format-groups/{id}/locations?tab={materialType}",
-      "scheme": "https",
-      "accept": "application/json, text/plain, */*",
-      "accept-encoding": "gzip, deflate, br, zstd",
-      "accept-language": "en-US,en;q=0.9",
-      "anonymous-user-id": "1c35d4e2-bdd1-49c4-97a3-9fc3eaa7d120",
-      "api-version": "1",
-      "iii-customer-domain": "slouc.na2.iiivega.com",
-      "iii-host-domain": "slouc.na2.iiivega.com",
-      "origin": "https://slouc.na2.iiivega.com",
-      "priority": "u=1, i",
-      "referer": "https://slouc.na2.iiivega.com/",
-      "sec-ch-ua": '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
-      "sec-ch-ua-mobile": "?0",
-      "sec-ch-ua-platform": '"Windows"',
-      "sec-fetch-dest": "empty",
-      "sec-fetch-mode": "cors",
-      "sec-fetch-site": "same-site",
-      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
-  }
-
-  response = requests.get(url, headers=headers)
-
-  print(f"Status code: {response.status_code}")
-
-  try:
-      data = response.json()
-      return data
-  except ValueError:
-      print("Response is not JSON:")
-      print(response.text)
-      return None
+    flat = flatten_dict(extracted)
+    flat = {k: ', '.join(v) if isinstance(v, list) else v for k, v in flat.items()}
+    notes_parts = [v for k, v in flat.items() if k.startswith("notes.")]
+    flat["notes"] = " ".join(notes_parts)
+    subject_parts = [v for k, v in flat.items() if k.startswith("subjects.")]
+    flat["subjects"] = "; ".join(subject_parts)
+    flat = {k: v for k, v in flat.items() if not (k.startswith("notes.") or k.startswith("subjects."))}
+    return flat
 
 
-### add additional info to previous json ###
-def add_editions_info(result, editions_info):
-   result.update(editions_info)
-   return result
-   
+def load_resume_data():
+    """Load previously fetched editions from .jsonl to resume."""
+    processed_ids = set()
+    existing_data = {}
+    if not os.path.exists(RESUME_FILE):
+        return processed_ids, existing_data
 
-### apply functions to every record in file
-# ideas - show status updates. see ideas on above functions
-def apply_to_results(results):
-
-  data = []
-
-  for result in results:
-    result_filtered = filter_result(result)
-    
-    editionsId = result_filtered.get("editionsId")
-    editions = get_editions(editionsId)
-
-    editions_info = parse_editions(editions)
-
-    combined_info = add_editions_info(result_filtered, editions_info)
-    data.append(combined_info)
-  
-  return data
-
-   
-
-# now we are ready for loading the data into an ai
-
-# maintenance (future)
-# for availability info: query library data from each branch
-# maybe each day. have it rolling in batches of 1000, so 1000 queries spread throughout the day
-# when recommending items, check availability of the item before recommending
-
-### Testing
-def test():
-  # vega_api()
-  results = load_json()
-  first_result = get_first_result(results)
-  first_result_filtered = filter_result(first_result)
-  
-  ## retrieve editions info
-  # editionsId = first_result_json.get("editionsId")
-  # editions = get_editions(editionsId)
-
-  ## optionally save as file
-  # with open("editions.json", "w", encoding="utf-8") as f:
-  #   json.dump(editions, f, ensure_ascii=False, indent=2)
-
-  # load as file
-  with open("editions.json", "r", encoding="utf-8") as f:
-      editions = json.load(f)
-
-  editions_info = parse_editions(editions)
-
-  combined_info = add_editions_info(first_result_filtered, editions_info)
-  # print(combined_info)
+    with open(RESUME_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            try:
+                entry = json.loads(line)
+                eid = entry.get("edition_id")
+                if eid:
+                    processed_ids.add(eid)
+                    existing_data[eid] = entry.get("data")
+            except json.JSONDecodeError:
+                continue
+    return processed_ids, existing_data
 
 
-  
-  # get relevant editions info
+async def enhance_results_parallel(results):
+    processed_ids, existing_data = load_resume_data()
+
+    # Update results with any existing data
+    for result in results:
+        for material in result.get("materials", []):
+            for idx, edition in enumerate(material.get("editions", [])):
+                eid = edition.get("id")
+                if eid in existing_data:
+                    material["editions"][idx] = {**edition, **existing_data[eid]}
+
+    # Gather all edition IDs still needing fetch
+    edition_map = []
+    for r_idx, result in enumerate(results):
+        for m_idx, material in enumerate(result.get("materials", [])):
+            for e_idx, edition in enumerate(material.get("editions", [])):
+                eid = edition.get("id")
+                if eid and eid not in processed_ids:
+                    edition_map.append((r_idx, m_idx, e_idx, eid))
+
+    async with aiohttp.ClientSession() as session:
+        tasks = [get_edition_async(eid, session) for _, _, _, eid in edition_map]
+        for f in tqdm_asyncio.as_completed(tasks, total=len(tasks), desc="Fetching editions"):
+            fetched_id, data = await f
+            if not data:
+                continue
+
+            parsed_data = parse_and_flatten_edition(data)
+
+            # Update results dict immediately
+            r_idx, m_idx, e_idx, _ = next((x for x in edition_map if x[3] == fetched_id), (None, None, None, None))
+            if r_idx is not None:
+                results[r_idx]["materials"][m_idx]["editions"][e_idx] = {
+                    **results[r_idx]["materials"][m_idx]["editions"][e_idx],
+                    **parsed_data
+                }
+
+            # Append to resume file
+            with open(RESUME_FILE, "a", encoding="utf-8") as f_out:
+                json.dump({
+                    "result_index": r_idx,
+                    "material_index": m_idx,
+                    "edition_index": e_idx,
+                    "edition_id": fetched_id,
+                    "data": results[r_idx]["materials"][m_idx]["editions"][e_idx]
+                }, f_out, ensure_ascii=False)
+                f_out.write("\n")
+
+    # Write final combined JSON
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f_final:
+        json.dump(results, f_final, ensure_ascii=False, indent=2)
+
+    print(f"✅ Finished! Combined JSON saved to {OUTPUT_FILE}")
+    return results
 
 
-  # # see first result
-  # print(first_result_json)
-
-  # # retrieve locations info
-  # id = first_result_json.get("id")
-  # materialType = first_result_json.get("materialType")
-  # locations = get_locations(id, materialType)
-
-  # # optionally save as file
-  # with open("locations.json", "w", encoding="utf-8") as f:
-  #   json.dump(locations, f, ensure_ascii=False, indent=2)
-
-  ## get additional info for results
-  # data = apply_to_results(results)
-  # with open("wrdvds_full", "w") as f:
-  #    json.dump(data, f, indent=2)
-  # print("Done!")
-
-
-### testing ###
 if __name__ == "__main__":
-   test()
+  
+  with open("iliad_partial.json") as f:
+    results = json.load(f)
+
+  results = asyncio.run(enhance_results_parallel(results))
 
