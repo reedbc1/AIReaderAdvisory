@@ -40,7 +40,7 @@ def vega_search():
       "materialTypeIds": ["33"],
       "locationIds": ["59"],
       "pageNum": 0,
-      "pageSize": 40,
+      "pageSize": 5000,
       "resourceType": "FormatGroup"
   }
 
@@ -48,9 +48,10 @@ def vega_search():
 
   if response.ok:
       print("✅ Success!")
-      data = response.json()
+      results = response.json()
       with open("vega_results.json", "w", encoding="utf-8") as f:
-          json.dump(data, f, indent=2, ensure_ascii=False)
+          json.dump(results, f, indent=2, ensure_ascii=False)
+      return results
 
   else:
       print(f"❌ Error {response.status_code}")
@@ -58,10 +59,7 @@ def vega_search():
 
 ##### The Iliad #####
 # iliad.json is from vega_search
-def iliad_test():
-  with open("iliad.json", "r", encoding="utf-8") as f:
-    results = json.load(f)
-
+def parse_results(results):
   data = results.get("data", [])
   new_results = []
   for record in data:
@@ -229,7 +227,7 @@ def enhance_results(results):
 ### testing ###
 if __name__ == "__main__":
 
-    results = iliad_test()
+    results = vega_search()
     enhance_results(results)
 
     
