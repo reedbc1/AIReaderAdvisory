@@ -1,403 +1,225 @@
-import os
-from openai import OpenAI
-import csv
-from dotenv import load_dotenv
-import requests
+import aiohttp
+import asyncio
 import json
+from tqdm.asyncio import tqdm_asyncio  # loading bars for asyncio
 
-load_dotenv()
+# Files
+RESULTS_FILE = "vega_results.json"
+ENHANCED_FILE = "enhanced_results.json"
+INFO_FILE = "info.json"
 
+# URLs
+BASE_SEARCH_URL = "https://na2.iiivega.com/api/search-result/search/format-groups"
+BASE_EDITION_URL = "https://na2.iiivega.com/api/search-result/editions"
 
-def format_results(results):
-    formatted_results = ''
-    for result in results.data:
-        formatted_result = f"<result file_id='{result.file_id}' file_name='{result.file_name}'>"
-        for part in result.content:
-            formatted_result += f"<content>{part.text}</content>"
-        formatted_results += formatted_result + "</result>"
-    return f"<sources>{formatted_results}</sources>"
+# Concurrency
+CONCURRENCY = 5
 
+# Headers (search)
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+    "authority": "na2.iiivega.com",
+    "method": "POST",
+    "path": "/api/search-result/search/format-groups",
+    "scheme": "https",
+    "accept": "application/json, text/plain, */*",
+    "accept-encoding": "gzip, deflate, br, zstd",
+    "accept-language": "en-US,en;q=0.9",
+    "anonymous-user-id": "c6aeabfe-dcc0-4e1a-8fa2-3934d465cb70",
+    "api-version": "2",
+    "iii-customer-domain": "slouc.na2.iiivega.com",
+    "iii-host-domain": "slouc.na2.iiivega.com",
+    "origin": "https://slouc.na2.iiivega.com",
+    "priority": "u=1, i",
+    "referer": "https://slouc.na2.iiivega.com/",
+    "sec-ch-ua": '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-site",
+    "Content-Type": "application/json"
+}
 
-def lookup():
-    api_key = os.getenv('OPENAI_API_KEY')
-
-    # Create client with your secret key
-    client = OpenAI()
-
-    # vector_store = client.vector_stores.create(
-    #     name = "WR Items"
-    # )
-
-    # client.vector_stores.files.upload_and_poll(
-    #         vector_store_id = vector_store.id,
-    #         file = open('wr.txt', mode = 'rb')
-    # )
-
-    # print(vector_store.id)
-
-    user_query = "Book"
-
-    results = client.vector_stores.search(
-        vector_store_id="vs_68e10330bd0c8191aa31018bf4f228ac",
-        query=user_query,
-    )
-
-    print(results)
-
-    formatted_results = format_results(results.data)
-    '\n'.join('\n'.join(c.text) for c in results.content
-              for result in results.data)
-
-    completion = client.chat.completions.create(
-        model="gpt-4.1",
-        messages=[{
-            "role":
-            "developer",
-            "content":
-            "Produce a concise answer to the query based on the provided sources."
-        }, {
-            "role":
-            "user",
-            "content":
-            f"Sources: {formatted_results}\n\nQuery: '{user_query}'"
-        }],
-    )
-
-    print(completion.choices[0].message.content)
-
-
-def query():
-    client = OpenAI()
-
-    response = client.responses.create(
-        model="gpt-5-nano",
-        input=
-        "Could you give me a summary of a random book from the vector store from the provided website?",
-        tools=[{
-            "type": "file_search",
-            "vector_store_ids": ["vs_68e10330bd0c8191aa31018bf4f228ac"]
-        }, {
-            "type": "web_search",
-            "filters": {
-                "allowed_domains": ["slouc.na2.iiivega.com"]
-            }
-        }])
-    print(response)
-
-
-# query()
-
-
-def vega_api():
-
-    url = "https://na2.iiivega.com/api/search-result/search/format-groups"
-
-    headers = {
-        "authority":
-        "na2.iiivega.com",
-        "method":
-        "POST",
-        "path":
-        "/api/search-result/search/format-groups",
-        "scheme":
-        "https",
-        "accept":
-        "application/json, text/plain, */*",
-        "accept-encoding":
-        "gzip, deflate, br, zstd",
-        "accept-language":
-        "en-US,en;q=0.9",
-        "anonymous-user-id":
-        "c6aeabfe-dcc0-4e1a-8fa2-3934d465cb70",
-        "api-version":
-        "2",
-        "iii-customer-domain":
-        "slouc.na2.iiivega.com",
-        "iii-host-domain":
-        "slouc.na2.iiivega.com",
-        "origin":
-        "https://slouc.na2.iiivega.com",
-        "priority":
-        "u=1, i",
-        "referer":
-        "https://slouc.na2.iiivega.com/",
-        "sec-ch-ua":
-        '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
-        "sec-ch-ua-mobile":
-        "?0",
-        "sec-ch-ua-platform":
-        '"Windows"',
-        "sec-fetch-dest":
-        "empty",
-        "sec-fetch-mode":
-        "cors",
-        "sec-fetch-site":
-        "same-site",
-        "user-agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                       "AppleWebKit/537.36 (KHTML, like Gecko) "
-                       "Chrome/141.0.0.0 Safari/537.36"),
-        "content-type":
-        "application/json",
-    }
-
+async def fetch_page(session, page_num, page_size):
     payload = {
-        "searchText": "*",
+        "searchText": "ILIAD",
         "sorting": "relevance",
         "sortOrder": "asc",
         "searchType": "everything",
-        "universalLimiterIds": ["at_library"],
-        "materialTypeIds": ["35", "1"],
-        "intendedAudienceIds": ["adolescent", "adult"],
-        "locationIds": ["59"],
-        "pageNum": 0,
-        "pageSize": 40,
-        "resourceType": "FormatGroup",
+        "pageNum": page_num,
+        "pageSize": page_size,
+        "resourceType": "FormatGroup"
+    }
+    async with session.post(BASE_SEARCH_URL, json=payload) as resp:
+        if resp.status == 200:
+            return await resp.json()
+        else:
+            text = await resp.text()
+            print(f"❌ Error {resp.status} on page {page_num}: {text}")
+            return None
+
+def parse_results(records):
+    parsed = []
+    for r in records:
+        parsed.append({
+            "id": r.get("id"),
+            "title": r.get("title"),
+            "publicationDate": r.get("publicationDate"),
+            "author": r.get("primaryAgent", {}).get("label"),
+            "materials": [
+                {
+                    "name": m.get("name"),
+                    "type": m.get("type"),
+                    "callNumber": m.get("callNumber"),
+                    "editions": [
+                        {"id": e.get("id"), "publicationDate": e.get("publicationDate")}
+                        for e in m.get("editions", [])
+                    ]
+                }
+                for m in r.get("materialTabs", [])
+            ]
+        })
+    return parsed
+
+def write_json_record(record, filename, first):
+    with open(filename, "a", encoding="utf-8") as f:
+        if not first:
+            f.write(",\n")
+        json.dump(record, f, ensure_ascii=False, indent=2)
+
+async def vega_search():
+    page_size = 40
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        first_data = await fetch_page(session, 0, page_size)
+        if not first_data:
+            print("❌ Failed to fetch first page.")
+            return
+
+        total_pages = first_data.get("totalPages", 1)
+        total_results = first_data.get("totalResults", 0)
+        print(f"✅ Found {total_results} results across {total_pages} pages.")
+
+        with open(INFO_FILE, "w", encoding="utf-8") as f:
+            json.dump({"totalPages": total_pages, "totalResults": total_results}, f, indent=2)
+
+        with open(RESULTS_FILE, "w", encoding="utf-8") as f:
+            f.write("[\n")
+
+        first_record = True
+        results = parse_results(first_data.get("data", []))
+        for r in results:
+            write_json_record(r, RESULTS_FILE, first_record)
+            first_record = False
+
+        pages = list(range(1, total_pages))
+        for i in range(0, len(pages), CONCURRENCY):
+            batch = pages[i:i+CONCURRENCY]
+            tasks = [fetch_page(session, p, page_size) for p in batch]
+            responses = await tqdm_asyncio.gather(*tasks, desc=f"Fetching pages {batch[0]}-{batch[-1]}")
+            for data in responses:
+                if data:
+                    results = parse_results(data.get("data", []))
+                    for r in results:
+                        write_json_record(r, RESULTS_FILE, first_record)
+                        first_record = False
+
+        with open(RESULTS_FILE, "a", encoding="utf-8") as f:
+            f.write("\n]\n")
+
+async def get_edition(session, edition_id):
+    async with session.get(f"{BASE_EDITION_URL}/{edition_id}") as resp:
+        if resp.status == 200:
+            return await resp.json()
+        else:
+            text = await resp.text()
+            print(f"❌ Error {resp.status} for edition {edition_id}: {text}")
+            return None
+
+def parse_and_flatten_edition(edition, sep="."):
+    data = edition.get("edition", {})
+    extracted = {
+        "subjects": {k: v for k, v in data.items() if k.startswith("subj")},
+        "notes": {k: v for k, v in data.items() if k.startswith("note")},
+        "contributors": data.get("contributors", [])
     }
 
-    # Send the POST request
-    response = requests.post(url, headers=headers, json=payload)
-
-    # Check the result
-    if response.ok:
-        data = response.json()
-        with open("vega_results.json", "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-    else:
-        print("❌ Request failed:", response.status_code, response.text)
-
-
-# vega_api()
-
-
-def extract_json():
-    with open('vega_results.json', 'r', encoding="utf-8") as file:
-        data = json.load(file)
-
-    results = []
-
-    for item in data["data"]:
-        title = item["title"]
-        publicationDate = item.get("publicationDate")
-        author = item.get("primaryAgent", {}).get("label")
-        callNumber = item.get("materialTabs",
-                              [{}])[0].get("callNumber").replace(
-                                  "  ", " ")  # where name == book
-        shelfLocation = item.get("materialTabs",
-                                 [{}])[0].get("itemShelfLocation")
-        collectionLocation = item.get("materialTabs",
-                                      [{}])[0].get("itemCollectionLocation")
-        isbn = item.get("identifiers", {}).get("isbn")
-
-        # isbn = "9780439139595"
-
-        base_url = "https://openlibrary.org"
-        append = f"/isbn/{isbn}.json"
-        url = base_url + append
-
-        response = requests.get(url)
-
-        if response.ok:
-            data = response.json()
-            works = data.get("works", [{}])
-            if works:
-                new_append = works[0]["key"] + ".json"
-                # print(new_append)
+    def flatten_dict(d, parent_key=""):
+        items = []
+        for k, v in d.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+            if isinstance(v, dict):
+                items.extend(flatten_dict(v, new_key).items())
             else:
-                new_append = None
+                items.append((new_key, v))
+        return dict(items)
 
-        if new_append:
-            url = base_url + new_append
-            response = requests.get(url)
-            if response.ok:
-                data = response.json()
-                # print(data)
-                description = data.get("description")
-                subject_places = data.get("subject_places", [])
-                subjects = data.get("subjects", [])
-            else:
-                print("oopsie daisies")
+    flat = flatten_dict(extracted)
+    flat = {k: ", ".join(v) if isinstance(v, list) else v for k, v in flat.items()}
+    notes = " ".join(v for k, v in flat.items() if k.startswith("notes."))
+    subjects = "; ".join(v for k, v in flat.items() if k.startswith("subjects."))
+    flat.update({"notes": notes, "subjects": subjects})
+    flat = {k: v for k, v in flat.items() if not k.startswith("notes.") and not k.startswith("subjects.")}
+    return flat
 
-        data_json = {
-            "title": title,
-            "publicationDate": publicationDate,
-            "author": author,
-            "callNumber": callNumber,
-            "shelfLocation": shelfLocation,
-            "collectionLocation": collectionLocation,
-            "isbn": isbn,
-            "description": description,
-            "subject_places": subject_places,
-            "subjects": subjects
-        }
-
-        results.append(data_json)
-
-    return results
-
-
-# print(extract_json())
-
-
-def item_level():
-    import requests
-
-    url = "https://na2.iiivega.com/api/search-result/search/items"
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
+async def enhance_results():
+    HEADERS_EDITION = {
+        "authority": "na2.iiivega.com",
+        "method": "GET",
+        "scheme": "https",
+        "accept": "application/json, text/plain, */*",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "en-US,en;q=0.9",
+        "anonymous-user-id": "c6aeabfe-dcc0-4e1a-8fa2-3934d465cb70",
+        "api-version": "1",
         "iii-customer-domain": "slouc.na2.iiivega.com",
+        "iii-host-domain": "slouc.na2.iiivega.com",
         "origin": "https://slouc.na2.iiivega.com",
-        "anonymous-user-id": "your-copied-uuid",
-        "user-agent": "Mozilla/5.0 ..."
-    }
-    payload = {
-        "searchText": "pottery",
-        "sorting": "relevance",
-        "sortOrder": "asc",
-        "searchType": "everything",
-        "universalLimiterIds": ["at_library"],
-        "locationIds": ["59"],
-        "pageNum": 0,
-        "pageSize": 40,
-        "resourceType": "Item"
+        "priority": "u=1, i",
+        "referer": "https://slouc.na2.iiivega.com/",
+        "sec-ch-ua": '"Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-site",
+        "User-Agent": HEADERS["User-Agent"]
     }
 
-    response = requests.post(url, headers=headers, json=payload)
-    data = response.json()
-    print(data)
+    with open(RESULTS_FILE, "r", encoding="utf-8") as f:
+        results = json.load(f)
+
+    async with aiohttp.ClientSession(headers=HEADERS_EDITION) as session:
+        with open(ENHANCED_FILE, "w", encoding="utf-8") as f:
+            f.write("[\n")
+        first_record = True
+
+        # Only show progress for the overall results
+        for result in tqdm_asyncio(results, desc="Enhancing results"):
+            updated_materials = []
+            for material in result.get("materials", []):
+                editions = material.get("editions", [])
+                new_editions = []
+
+                # Fetch editions without a separate progress bar
+                tasks = [get_edition(session, e.get("id")) for e in editions if e.get("id")]
+                edition_responses = await asyncio.gather(*tasks)
+                for e, data in zip(editions, edition_responses):
+                    if not data:
+                        continue
+                    parsed = parse_and_flatten_edition(data)
+                    new_editions.append({**e, **parsed})
+
+                updated_materials.append({**material, "editions": new_editions})
+
+            result["materials"] = updated_materials
+            write_json_record(result, ENHANCED_FILE, first_record)
+            first_record = False
+
+        with open(ENHANCED_FILE, "a", encoding="utf-8") as f:
+            f.write("\n]\n")
 
 
-item_level()
-
-
-def create_json():
-    import pandas as pd
-    import json
-
-    # Load your exported SimplyReports CSV
-    df = pd.read_csv("csv/wr_items.csv")
-
-    # Convert to JSON records
-    records = df.to_dict(orient='records')
-
-    # Save to file
-    with open('library_books.json', 'w', encoding='utf-8') as f:
-        json.dump(records, f, ensure_ascii=False, indent=2)
-
-
-def enrich_data():
-    import requests
-    import pandas as pd
-    import json
-    import time
-
-    # --- CONFIGURATION ---
-    INPUT_CSV = "csv/wr_items.csv"
-    OUTPUT_JSON = "library_books_enriched.json"
-    SLEEP_BETWEEN_REQUESTS = 0.5  # seconds, to avoid rate limits
-
-    # --- LOAD SIMPLYREPORTS EXPORT ---
-    df = pd.read_csv(INPUT_CSV)
-    df = df[0:10]
-    print(type(df["ISBN"][0]))
-    df['ISBN'] = df['ISBN'].apply(lambda x: '%.9f' % x)
-    df["ISBN"] = [item.split(".")[0] for item in df["ISBN"]]
-    print(df["ISBN"])
-
-    # Try to detect likely column names automatically
-    possible_isbn_cols = [col for col in df.columns if "isbn" in col.lower()]
-    possible_title_cols = [col for col in df.columns if "title" in col.lower()]
-    possible_author_cols = [
-        col for col in df.columns if "author" in col.lower()
-    ]
-
-    isbn_col = possible_isbn_cols[0] if possible_isbn_cols else None
-    title_col = possible_title_cols[0] if possible_title_cols else None
-    author_col = possible_author_cols[0] if possible_author_cols else None
-
-    print(
-        f"Using ISBN column: {isbn_col}, Title column: {title_col}, Author column: {author_col}"
-    )
-
-    # --- FUNCTION TO QUERY GOOGLE BOOKS API ---
-    def get_book_data(isbn=None, title=None, author=None):
-        if isbn:
-            query = f"isbn:{isbn}"
-        elif title:
-            query = f"intitle:{title}"
-            if author:
-                query += f"+inauthor:{author}"
-        else:
-            return None
-
-        url = f"https://www.googleapis.com/books/v1/volumes?q={query}"
-        response = requests.get(url)
-        print(response)
-        if not response.ok:
-            return None
-
-        data = response.json()
-        if "items" not in data:
-            return None
-
-        info = data["items"][0]["volumeInfo"]
-
-        return {
-            "title": info.get("title"),
-            "authors": info.get("authors", []),
-            "publishedDate": info.get("publishedDate"),
-            "publisher": info.get("publisher"),
-            "pageCount": info.get("pageCount"),
-            "categories": info.get("categories", []),
-            "description": info.get("description"),
-            "industryIdentifiers": info.get("industryIdentifiers", []),
-        }
-
-    # --- ENRICH DATA ---
-    records = []
-    for _, row in df.iterrows():
-        isbn = row[isbn_col] if isbn_col else None
-        title = row[title_col] if title_col else None
-        author = row[author_col] if author_col else None
-
-        book_data = get_book_data(isbn=isbn, title=title, author=author)
-        if book_data:
-            record = {
-                "local_title": title,
-                "local_author": author,
-                "local_isbn": isbn,
-                "google_books_info": book_data
-            }
-            records.append(record)
-            print(f"✅ Found: {book_data['title']}")
-        else:
-            print(f"❌ No data found for: {title}")
-
-        time.sleep(SLEEP_BETWEEN_REQUESTS)
-
-    # --- SAVE TO JSON ---
-    print(len(records))
-    with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
-        json.dump(records, f, ensure_ascii=False, indent=2)
-
-    print(f"\n✨ Enriched data saved to {OUTPUT_JSON}")
-
-
-# enrich_data()
-
-import json
-
-with open("library_books_enriched.json", "r", encoding="utf-8") as f:
-    books = json.load(f)
-
-
-def book_to_text(book):
-    return f"""Title: {book['local_title']}
-        Author: {book['local_author']}
-        Categories: {', '.join(book.get('categories', []))}
-        Summary: {book.get('description', 'No summary available')}"""
-
-
-book_texts = [book_to_text(book) for book in books]
-
-print(book_texts)
+if __name__ == "__main__":
+    asyncio.run(vega_search())
+    asyncio.run(enhance_results())
