@@ -2,20 +2,18 @@ import aiohttp
 import asyncio
 import json
 from tqdm.asyncio import tqdm_asyncio  # loading bars for asyncio
+import random
+from tqdm.asyncio import tqdm_asyncio
 
-# Files
-RESULTS_FILE = "vega_results.json"
-ENHANCED_FILE = "enhanced_results.json"
+RESULTS_FILE = "horror.json"
+ENHANCED_FILE = "horror_enhanced.json"
 INFO_FILE = "info.json"
-
-# URLs
 BASE_SEARCH_URL = "https://na2.iiivega.com/api/search-result/search/format-groups"
 BASE_EDITION_URL = "https://na2.iiivega.com/api/search-result/editions"
-
-# Concurrency
 CONCURRENCY = 5
+searchText = "horror"
 
-# Headers (search)
+### Vega search results ###
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
     "authority": "na2.iiivega.com",
@@ -41,23 +39,30 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-async def fetch_page(session, page_num, page_size):
+
+async def fetch_page(session, page_num, page_size, semaphore):
     payload = {
-        "searchText": "ILIAD",
+        "searchText": searchText,
         "sorting": "relevance",
         "sortOrder": "asc",
         "searchType": "everything",
+        "universalLimiterIds": ["at_library"],
+        "materialTypeIds": ["33"],
+        "locationIds": ["59"],
         "pageNum": page_num,
         "pageSize": page_size,
         "resourceType": "FormatGroup"
     }
-    async with session.post(BASE_SEARCH_URL, json=payload) as resp:
-        if resp.status == 200:
-            return await resp.json()
-        else:
-            text = await resp.text()
-            print(f"❌ Error {resp.status} on page {page_num}: {text}")
-            return None
+
+    async with semaphore:
+        async with session.post(BASE_SEARCH_URL, json=payload) as resp:
+            if resp.status == 200:
+                return await resp.json()
+            else:
+                text = await resp.text()
+                print(f"❌ Error {resp.status} on page {page_num}: {text}")
+                return None
+
 
 def parse_results(records):
     parsed = []
@@ -82,16 +87,21 @@ def parse_results(records):
         })
     return parsed
 
+
 def write_json_record(record, filename, first):
     with open(filename, "a", encoding="utf-8") as f:
         if not first:
             f.write(",\n")
         json.dump(record, f, ensure_ascii=False, indent=2)
 
+
 async def vega_search():
-    page_size = 40
+    page_size = 1000
+    semaphore = asyncio.Semaphore(CONCURRENCY)
+
     async with aiohttp.ClientSession(headers=HEADERS) as session:
-        first_data = await fetch_page(session, 0, page_size)
+        # Fetch first page for metadata
+        first_data = await fetch_page(session, 0, page_size, semaphore)
         if not first_data:
             print("❌ Failed to fetch first page.")
             return
@@ -103,30 +113,40 @@ async def vega_search():
         with open(INFO_FILE, "w", encoding="utf-8") as f:
             json.dump({"totalPages": total_pages, "totalResults": total_results}, f, indent=2)
 
+        # Start output file
         with open(RESULTS_FILE, "w", encoding="utf-8") as f:
             f.write("[\n")
 
         first_record = True
+
+        # Write first page
         results = parse_results(first_data.get("data", []))
         for r in results:
             write_json_record(r, RESULTS_FILE, first_record)
             first_record = False
 
-        pages = list(range(1, total_pages))
-        for i in range(0, len(pages), CONCURRENCY):
-            batch = pages[i:i+CONCURRENCY]
-            tasks = [fetch_page(session, p, page_size) for p in batch]
-            responses = await tqdm_asyncio.gather(*tasks, desc=f"Fetching pages {batch[0]}-{batch[-1]}")
-            for data in responses:
-                if data:
-                    results = parse_results(data.get("data", []))
-                    for r in results:
-                        write_json_record(r, RESULTS_FILE, first_record)
-                        first_record = False
+        # Create all tasks for remaining pages
+        tasks = [
+            fetch_page(session, page_num, page_size, semaphore)
+            for page_num in range(1, total_pages)
+        ]
+
+        # Process pages concurrently with progress bar
+        for coro in tqdm_asyncio.as_completed(tasks, desc="Fetching remaining pages"):
+            data = await coro
+            if data:
+                results = parse_results(data.get("data", []))
+                for r in results:
+                    write_json_record(r, RESULTS_FILE, first_record)
+                    first_record = False
 
         with open(RESULTS_FILE, "a", encoding="utf-8") as f:
             f.write("\n]\n")
 
+        print(f"✅ Results saved to {RESULTS_FILE}")
+
+
+### Get edition info ###
 async def get_edition(session, edition_id):
     async with session.get(f"{BASE_EDITION_URL}/{edition_id}") as resp:
         if resp.status == 200:
@@ -162,7 +182,65 @@ def parse_and_flatten_edition(edition, sep="."):
     flat = {k: v for k, v in flat.items() if not k.startswith("notes.") and not k.startswith("subjects.")}
     return flat
 
+
+# Config
+CONCURRENCY = 10          # how many "results" to process at once
+MAX_RETRIES = 3           # retry failed edition fetches
+RETRY_BACKOFF = (1, 4)    # seconds between retries (min, max)
+
+
+async def fetch_with_retries(session, url, max_retries=MAX_RETRIES):
+    """Fetch a URL with retry and exponential backoff."""
+    for attempt in range(max_retries):
+        try:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+                else:
+                    text = await resp.text()
+                    print(f"❌ {resp.status} for {url}: {text[:100]}...")
+        except Exception as e:
+            print(f"⚠️ Exception for {url}: {e}")
+
+        if attempt < max_retries - 1:
+            sleep_time = random.uniform(*RETRY_BACKOFF) * (2 ** attempt)
+            await asyncio.sleep(sleep_time)
+    return None
+
+
+async def get_edition(session, edition_id):
+    url = f"https://na2.iiivega.com/api/search-result/editions/{edition_id}"
+    return await fetch_with_retries(session, url)
+
+
+async def process_result(semaphore, session, result):
+    async with semaphore:
+        updated_materials = []
+        for material in result.get("materials", []):
+            editions = material.get("editions", [])
+            if not editions:
+                updated_materials.append(material)
+                continue
+
+            # Fetch all editions concurrently for this material
+            tasks = [get_edition(session, e.get("id")) for e in editions if e.get("id")]
+            edition_responses = await asyncio.gather(*tasks, return_exceptions=True)
+
+            new_editions = []
+            for e, data in zip(editions, edition_responses):
+                if isinstance(data, Exception) or not data:
+                    continue
+                parsed = parse_and_flatten_edition(data)
+                new_editions.append({**e, **parsed})
+
+            updated_materials.append({**material, "editions": new_editions})
+
+        result["materials"] = updated_materials
+        return result
+
+
 async def enhance_results():
+    """Enhance result JSON by fetching editions concurrently with retries."""
     HEADERS_EDITION = {
         "authority": "na2.iiivega.com",
         "method": "GET",
@@ -183,41 +261,32 @@ async def enhance_results():
         "sec-fetch-dest": "empty",
         "sec-fetch-mode": "cors",
         "sec-fetch-site": "same-site",
-        "User-Agent": HEADERS["User-Agent"]
+        "User-Agent": HEADERS["User-Agent"],
     }
 
+    # Load your existing search results
     with open(RESULTS_FILE, "r", encoding="utf-8") as f:
         results = json.load(f)
 
+    semaphore = asyncio.Semaphore(CONCURRENCY)
+
     async with aiohttp.ClientSession(headers=HEADERS_EDITION) as session:
+        # Start new JSON array output file
         with open(ENHANCED_FILE, "w", encoding="utf-8") as f:
             f.write("[\n")
+
         first_record = True
+        tasks = [process_result(semaphore, session, r) for r in results]
 
-        # Only show progress for the overall results
-        for result in tqdm_asyncio(results, desc="Enhancing results"):
-            updated_materials = []
-            for material in result.get("materials", []):
-                editions = material.get("editions", [])
-                new_editions = []
-
-                # Fetch editions without a separate progress bar
-                tasks = [get_edition(session, e.get("id")) for e in editions if e.get("id")]
-                edition_responses = await asyncio.gather(*tasks)
-                for e, data in zip(editions, edition_responses):
-                    if not data:
-                        continue
-                    parsed = parse_and_flatten_edition(data)
-                    new_editions.append({**e, **parsed})
-
-                updated_materials.append({**material, "editions": new_editions})
-
-            result["materials"] = updated_materials
+        # Single clean progress bar for total results
+        for coro in tqdm_asyncio.as_completed(tasks, desc="Enhancing results", total=len(tasks)):
+            result = await coro
             write_json_record(result, ENHANCED_FILE, first_record)
             first_record = False
 
         with open(ENHANCED_FILE, "a", encoding="utf-8") as f:
             f.write("\n]\n")
+
 
 
 if __name__ == "__main__":
