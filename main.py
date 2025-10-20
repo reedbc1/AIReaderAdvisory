@@ -3,10 +3,11 @@ import asyncio
 import json
 from tqdm.asyncio import tqdm_asyncio  # loading bars for asyncio
 import random
-from tqdm.asyncio import tqdm_asyncio
 
-RESULTS_FILE = "horror.json"
-ENHANCED_FILE = "horror_enhanced.json"
+# only get one edition, so flatten by record --> material
+
+RESULTS_FILE = "json_files/wr.json"
+ENHANCED_FILE = "json_files/wr_enhanced.json"
 INFO_FILE = "info.json"
 BASE_SEARCH_URL = "https://na2.iiivega.com/api/search-result/search/format-groups"
 BASE_EDITION_URL = "https://na2.iiivega.com/api/search-result/editions"
@@ -42,15 +43,15 @@ HEADERS = {
 
 async def fetch_page(session, page_num, page_size, semaphore):
     payload = {
-        "searchText": searchText,
+        "searchText": "*",
         "sorting": "relevance",
         "sortOrder": "asc",
         "searchType": "everything",
         "universalLimiterIds": ["at_library"],
+        "locationIds": ["59"],  
         "materialTypeIds": ["33"],
-        "locationIds": ["59"],
-        "pageNum": page_num,
-        "pageSize": page_size,
+        "pageNum": 0,
+        "pageSize": 1000,
         "resourceType": "FormatGroup"
     }
 

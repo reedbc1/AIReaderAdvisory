@@ -5,3 +5,6 @@ requests
 pandas
 aiohttp
 async_timeout
+tiktoken
+faiss-cpu
+tqdm
