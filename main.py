@@ -3,6 +3,7 @@ import asyncio
 import json
 from tqdm.asyncio import tqdm_asyncio  # loading bars for asyncio
 import random
+import requests
 
 # only get one edition, so flatten by record --> material
 
@@ -161,7 +162,38 @@ async def vega_search():
 
 
 ### for editions ###
-def parse_and_flatten_edition(edition, sep="."):
+
+
+def fetch_edition(edition_id):
+    url = ("https://na2.iiivega.com/api/search-result"
+           f"/editions/{edition_id}")
+
+    headers = {
+        "accept": "application/json, text/plain, */*",
+        "accept-language": "en-US,en;q=0.9",
+        "anonymous-user-id": "c6e7697b-de9b-4def-aab7-9994c4725500",
+        "api-version": "1",
+        "iii-customer-domain": "slouc.na2.iiivega.com",
+        "iii-host-domain": "slouc.na2.iiivega.com",
+        "priority": "u=1, i",
+        "sec-ch-ua":
+        "\"Google Chrome\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-site",
+        "Referer": "https://slouc.na2.iiivega.com/"
+    }
+
+    response = requests.get(url, headers=headers)
+    edition_info = response.json()
+
+    return edition_info
+
+
+# only take noteSummmary?
+def process_edition(edition, sep="."):
     data = edition.get("edition", {})
     extracted = {
         "subjects": {
@@ -202,5 +234,20 @@ def parse_and_flatten_edition(edition, sep="."):
     return flat
 
 
+def editions_main():
+    with open(RESULTS_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    for record in data:
+        edition_id = record.get("materials", [])[0] \
+                            .get("editions", [])[0] \
+                            .get("id")
+        edition_info = fetch_edition(edition_id)
+        processed_edition = process_edition(edition_info)
+
+
 if __name__ == "__main__":
-    asyncio.run(vega_search())
+    # asyncio.run(vega_search())
+    result = fetch_edition("4789d4d3-3cbb-11ee-9a4f-3f0c1cb13fc6")
+    processed_edition = process_edition(result)
+    print(processed_edition)
