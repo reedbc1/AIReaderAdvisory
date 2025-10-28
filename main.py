@@ -46,7 +46,7 @@ HEADERS = {
 
 async def fetch_page(session, page_num, page_size, semaphore):
     payload = {
-        "searchText": "*",
+        "searchText": f"{searchText}",
         "sorting": "relevance",
         "sortOrder": "asc",
         "searchType": "everything",
@@ -162,9 +162,7 @@ async def vega_search():
 
 
 ### for editions ###
-
-
-def fetch_edition(edition_id):
+async def fetch_edition(edition_id):
     url = ("https://na2.iiivega.com/api/search-result"
            f"/editions/{edition_id}")
 
@@ -186,10 +184,9 @@ def fetch_edition(edition_id):
         "Referer": "https://slouc.na2.iiivega.com/"
     }
 
-    response = requests.get(url, headers=headers)
-    edition_info = response.json()
-
-    return edition_info
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers) as response:
+            ...
 
 
 # only take noteSummmary?
@@ -225,7 +222,7 @@ def process_edition(edition, sep="."):
     notes = " ".join(v for k, v in flat.items() if k.startswith("notes."))
     subjects = "; ".join(v for k, v in flat.items()
                          if k.startswith("subjects."))
-    flat.update({"notes": notes, "subjects": subjects})
+    flat.update({"summary": notes, "subjects": subjects})
     flat = {
         k: v
         for k, v in flat.items()
@@ -234,20 +231,23 @@ def process_edition(edition, sep="."):
     return flat
 
 
-def editions_main():
+async def editions_main():
     with open(RESULTS_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    for record in data:
-        edition_id = record.get("materials", [])[0] \
-                            .get("editions", [])[0] \
-                            .get("id")
-        edition_info = fetch_edition(edition_id)
-        processed_edition = process_edition(edition_info)
+    semaphore = asyncio.Semaphore(CONCURRENCY)
+    async with semaphore:
+        for record in data:
+            edition_id = record.get("materials", [])[0] \
+                                .get("editions", [])[0] \
+                                .get("id")
+            edition_info = fetch_edition(edition_id)
+            processed_edition = process_edition(edition_info)
+            record.update(processed_edition)
+
+    with open(ENHANCED_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 if __name__ == "__main__":
-    # asyncio.run(vega_search())
-    result = fetch_edition("4789d4d3-3cbb-11ee-9a4f-3f0c1cb13fc6")
-    processed_edition = process_edition(result)
-    print(processed_edition)
+    asyncio.run(vega_search())
