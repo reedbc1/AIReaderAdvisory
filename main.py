@@ -13,7 +13,7 @@ INFO_FILE = "info.json"
 BASE_SEARCH_URL = "https://na2.iiivega.com/api/search-result/search/format-groups"
 BASE_EDITION_URL = "https://na2.iiivega.com/api/search-result/editions"
 CONCURRENCY = 5
-searchText = "horror"
+searchText = "*"
 
 ### Vega search results ###
 HEADERS = {
@@ -162,7 +162,7 @@ async def vega_search():
 
 
 ### for editions ###
-async def fetch_edition(edition_id):
+async def fetch_edition(session, edition_id):
     url = ("https://na2.iiivega.com/api/search-result"
            f"/editions/{edition_id}")
 
@@ -183,10 +183,9 @@ async def fetch_edition(edition_id):
         "sec-fetch-site": "same-site",
         "Referer": "https://slouc.na2.iiivega.com/"
     }
-
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers) as response:
-            ...
+    
+    async with session.get(url, headers=headers) as response:
+        return await response.json()
 
 
 # only take noteSummmary?
@@ -231,23 +230,37 @@ def process_edition(edition, sep="."):
     return flat
 
 
+async def process_record(record, session, semaphore):
+    edition_id = (
+        record.get("materials", [])[0].get("editions", [])[0].get("id")
+    )
+    async with semaphore:
+        edition_info = await fetch_edition(session, edition_id)
+
+    processed_edition = process_edition(edition_info)
+    record.update(processed_edition)
+    return record
+
+
 async def editions_main():
     with open(RESULTS_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     semaphore = asyncio.Semaphore(CONCURRENCY)
-    async with semaphore:
-        for record in data:
-            edition_id = record.get("materials", [])[0] \
-                                .get("editions", [])[0] \
-                                .get("id")
-            edition_info = fetch_edition(edition_id)
-            processed_edition = process_edition(edition_info)
-            record.update(processed_edition)
+
+    async with aiohttp.ClientSession() as session:
+        tasks = [
+            process_record(record, session, semaphore)
+            for record in data
+        ]
+
+        # tqdm_asyncio.gather gives you a live progress bar
+        updated_records = await tqdm_asyncio.gather(*tasks, desc="Fetching editions")
 
     with open(ENHANCED_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+        json.dump(updated_records, f, ensure_ascii=False, indent=2)
 
 
 if __name__ == "__main__":
     asyncio.run(vega_search())
+    asyncio.run(editions_main())
