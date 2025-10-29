@@ -3,6 +3,7 @@ import asyncio
 import json
 from tqdm.asyncio import tqdm_asyncio  # loading bars for asyncio
 import random
+import requests
 
 # only get one edition, so flatten by record --> material
 
@@ -45,7 +46,7 @@ HEADERS = {
 
 async def fetch_page(session, page_num, page_size, semaphore):
     payload = {
-        "searchText": "*",
+        "searchText": f"{searchText}",
         "sorting": "relevance",
         "sortOrder": "asc",
         "searchType": "everything",
@@ -161,7 +162,35 @@ async def vega_search():
 
 
 ### for editions ###
-def parse_and_flatten_edition(edition, sep="."):
+async def fetch_edition(edition_id):
+    url = ("https://na2.iiivega.com/api/search-result"
+           f"/editions/{edition_id}")
+
+    headers = {
+        "accept": "application/json, text/plain, */*",
+        "accept-language": "en-US,en;q=0.9",
+        "anonymous-user-id": "c6e7697b-de9b-4def-aab7-9994c4725500",
+        "api-version": "1",
+        "iii-customer-domain": "slouc.na2.iiivega.com",
+        "iii-host-domain": "slouc.na2.iiivega.com",
+        "priority": "u=1, i",
+        "sec-ch-ua":
+        "\"Google Chrome\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-site",
+        "Referer": "https://slouc.na2.iiivega.com/"
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers) as response:
+            ...
+
+
+# only take noteSummmary?
+def process_edition(edition, sep="."):
     data = edition.get("edition", {})
     extracted = {
         "subjects": {
@@ -193,13 +222,31 @@ def parse_and_flatten_edition(edition, sep="."):
     notes = " ".join(v for k, v in flat.items() if k.startswith("notes."))
     subjects = "; ".join(v for k, v in flat.items()
                          if k.startswith("subjects."))
-    flat.update({"notes": notes, "subjects": subjects})
+    flat.update({"summary": notes, "subjects": subjects})
     flat = {
         k: v
         for k, v in flat.items()
         if not k.startswith("notes.") and not k.startswith("subjects.")
     }
     return flat
+
+
+async def editions_main():
+    with open(RESULTS_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    semaphore = asyncio.Semaphore(CONCURRENCY)
+    async with semaphore:
+        for record in data:
+            edition_id = record.get("materials", [])[0] \
+                                .get("editions", [])[0] \
+                                .get("id")
+            edition_info = fetch_edition(edition_id)
+            processed_edition = process_edition(edition_info)
+            record.update(processed_edition)
+
+    with open(ENHANCED_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 if __name__ == "__main__":

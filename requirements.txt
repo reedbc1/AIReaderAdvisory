@@ -8,3 +8,4 @@ async_timeout
 tiktoken
 faiss-cpu
 tqdm
+numpy
