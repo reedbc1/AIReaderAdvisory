@@ -52,8 +52,8 @@ async def fetch_page(session, page_num, page_size, semaphore):
         "universalLimiterIds": ["at_library"],
         "locationIds": ["59"],
         "materialTypeIds": ["33"],
-        "pageNum": 0,
-        "pageSize": 1000,
+        "pageNum": page_num,
+        "pageSize": page_size,
         "resourceType": "FormatGroup"
     }
 
