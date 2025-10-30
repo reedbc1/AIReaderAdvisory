@@ -63,27 +63,6 @@ import json
 with open("json_files/wr_enhanced.json", "r", encoding="utf-8") as f:
     data = json.load(f)
 
-# Remove duplicates based on 'id'
-seen_ids = set()
-unique_data = []
-
-for record in data:
-    record_id = record.get("id")
-    if record_id and record_id not in seen_ids:
-        seen_ids.add(record_id)
-        unique_data.append(record)
-
-# Save back to JSON
-with open("library_flat_unique.json", "w") as f:
-    json.dump(unique_data, f, indent=2)
-
-print(f"✅ Removed duplicates: {len(data) - len(unique_data)} duplicates dropped.")
-print(f"Remaining records: {len(unique_data)}")
-
-# Load flattened data
-with open("library_flat_unique.json") as f:
-    data = json.load(f)
-
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
@@ -95,11 +74,12 @@ def record_to_text(r):
         f"Publication Date: {r.get('publicationDate', '')}\n"
         f"Contributors: {r.get('contributors', '')}\n"
         f"Subjects: {r.get('subjects', '')}\n"
-        f"Description: {r.get('notes', '')}"
+        f"Description: {r.get('summary', '')}"
     )
 
 texts = [record_to_text(r) for r in data]
 batch_size = 100
+
 
 async def embed_batch(batch):
     # Retry with exponential backoff
@@ -114,6 +94,7 @@ async def embed_batch(batch):
             print(f"Error: {e} — retrying in {2 ** attempt} sec")
             await asyncio.sleep(2 ** attempt)
     return [None] * len(batch)  # fallback if all retries fail
+
 
 async def main():
     all_embeddings = []
