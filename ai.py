@@ -16,50 +16,7 @@ import time
 
 load_dotenv()
 
-def run_flatten():
-    def flatten_library_data(data):
-        flattened = []
-
-        for record in data:
-            id = record.get("id")
-            title = record.get("title")
-            author = record.get("author")
-            publication_date = record.get("publicationDate")
-
-            for material in record.get("materials", []):
-                mat_name = material.get("name")
-                mat_type = material.get("type")
-                call_number = material.get("callNumber")
-
-                for edition in material.get("editions", []):
-                    flattened.append({
-                        "record_id": id,
-                        "edition_id": edition.get("id"),
-                        "title": title,
-                        "author": author,
-                        "material_name": mat_name,
-                        "material_type": mat_type,
-                        "callNumber": call_number,
-                        "publicationDate": edition.get("publicationDate", publication_date),
-                        "contributors": edition.get("contributors"),
-                        "notes": edition.get("notes"),
-                        "subjects": edition.get("subjects"),
-                    })
-
-        return flattened
-    
-    with open("json_files/wr_enhanced.json", "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    flattened_data = flatten_library_data(data)
-
-    # Save as new file
-    with open("json_files/wr_flat.json", "w") as f:
-        json.dump(flattened_data, f, indent=2)
-
-import json
-
-# Load flattened JSON
+# Load JSON
 with open("json_files/wr_enhanced.json", "r", encoding="utf-8") as f:
     data = json.load(f)
 
@@ -70,7 +27,7 @@ def record_to_text(r):
     return (
         f"Title: {r['title']}\n"
         f"Author: {r.get('author', '')}\n"
-        f"Material: {r.get('material_name', '')} ({r.get('material_type', '')})\n"
+        f"Material: {r.get('materials', '')[0].get('name')}\n"
         f"Publication Date: {r.get('publicationDate', '')}\n"
         f"Contributors: {r.get('contributors', '')}\n"
         f"Subjects: {r.get('subjects', '')}\n"
@@ -119,7 +76,6 @@ async def main():
     print("✅ Done. Saved FAISS index and embeddings.")
 
 if __name__ == "__main__":
-    # run_flatten()
     asyncio.run(main())
     
 
