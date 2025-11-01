@@ -16,34 +16,35 @@ with open("json_files/wr_enhanced.json", encoding="utf-8") as f:
     data = json.load(f)
 
 embeddings = np.load("library_embeddings.npy")
-assert len(data) == embeddings.shape[0], "❌ Mismatch between JSON records and embeddings!"
+assert len(data) == embeddings.shape[
+    0], "❌ Mismatch between JSON records and embeddings!"
 
 # 1. Define a list of callable tools for the model
-tools = [
-{
-  "type": "function",
-  "name": "search_library",
-  "description": "Find similar movies to user request.",
-  "strict": True,
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "query": {
-        "type": "string",
-        "description": ("A description of what kinds of movies the customer is looking for,"
-                        "including the names of movies and actors.")
-      },
-      "k": {
-        "type": "integer",
-        "description": "The number of top similar results to return.",
-        "default": 5
-      }
-    },
-    "required": ["query", "k"],
-    "additionalProperties": False
-  }
-}
-]
+tools = [{
+    "type": "function",
+    "name": "search_library",
+    "description": "Find similar movies to user request.",
+    "strict": True,
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type":
+                "string",
+                "description":
+                ("A description of what kinds of movies the customer is looking for,"
+                 "including the names of movies and actors.")
+            },
+            "k": {
+                "type": "integer",
+                "description": "The number of top similar results to return.",
+                "default": 5
+            }
+        },
+        "required": ["query", "k"],
+        "additionalProperties": False
+    }
+}]
 
 
 def search_library(query, k):
@@ -51,15 +52,14 @@ def search_library(query, k):
     k = 5
 
     # Get embedding for the query
-    response = client.embeddings.create(
-        model="text-embedding-3-small",
-        input=query
-    )
-    query_vec = np.array(response.data[0].embedding, dtype="float32").reshape(1, -1)
-    
+    response = client.embeddings.create(model="text-embedding-3-small",
+                                        input=query)
+    query_vec = np.array(response.data[0].embedding,
+                         dtype="float32").reshape(1, -1)
+
     # Search FAISS
     distances, indices = index.search(query_vec, k)
-    
+
     # Return top results with metadata
     results = []
     for dist, idx in zip(distances[0], indices[0]):
@@ -85,9 +85,7 @@ def call_function(name, args):
 # Create a running input list we will add to over time
 query = "I'm looking for movies like pans labrynth"
 
-input_messages = [
-    {"role": "user", "content": f"{query}"}
-]
+input_messages = [{"role": "user", "content": f"{query}"}]
 
 # 2. Prompt the model with tools defined
 response = client.responses.create(
@@ -105,18 +103,13 @@ for tool_call in response.output:
     args = json.loads(tool_call.arguments)
 
     result = call_function(name, args)
-    input_messages.append({
-        "role": "user",
-        "content": str(result)
-    })
+    input_messages.append({"role": "user", "content": str(result)})
 
 print(input_messages)
 print("\n")
 
-response = client.responses.create(
-    model="gpt-5",
-    input=input_messages,
-)
+response = client.responses.create(model="gpt-5",
+                                   input=input_messages,
+                                   tools=tools)
 
 print(response.output_text)
-
