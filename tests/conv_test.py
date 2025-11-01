@@ -4,19 +4,17 @@ import faiss
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
+import logging
+
+# Basic configuration (sets up a StreamHandler and Formatter for the root logger)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Get a named logger
+logger = logging.getLogger(__name__)
 
 # Load API key
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-conversation = client.conversations.create(metadata={"topic": "demo"},
-                                           items=[{
-                                               "type": "message",
-                                               "role": "user",
-                                               "content": "Hello!"
-                                           }])
-
-conv_id = conversation.id
 
 # Load index and data
 index = faiss.read_index("library.index")
@@ -43,24 +41,26 @@ tools = [{
                 "description":
                 ("A description of what kinds of movies the customer is looking for,"
                  "including the names of movies and actors.")
+            },
+            "k": {
+                "type": "integer",
+                "description": "The number of top similar results to return.",
+                "default": 5
             }
         },
-        "required": ["query"],
+        "required": ["query", "k"],
         "additionalProperties": False
     }
 }]
 
 
-def search_library(input):
+def search_library(query, k):
     """Return top-k most similar library items to a text query."""
-    query = input.get("query")
-    k = 5
-
-    print("search_library ran!")
 
     # Get embedding for the query
     response = client.embeddings.create(model="text-embedding-3-small",
                                         input=query)
+    
     query_vec = np.array(response.data[0].embedding,
                          dtype="float32").reshape(1, -1)
 
@@ -71,6 +71,7 @@ def search_library(input):
     results = []
     for dist, idx in zip(distances[0], indices[0]):
         record = data[idx]
+        # add link so that the tool can link to vega for items.
         results.append({
             "title": record.get("title"),
             "author": record.get("author"),
@@ -84,28 +85,72 @@ def search_library(input):
     return results
 
 
-items = client.conversations.items.list(conv_id, limit=10)
-print("printing items.data...")
-print(items.data)
+def call_function(name, args):
+    if name == "search_library":
+        return search_library(**args)
 
-# Create a running input list we will add to over time
-query = "I'm looking for movies like pans labrynth"
 
-# 2. Prompt the model with tools defined
-response = client.responses.create(model="gpt-5",
-                                   tools=tools,
-                                   tool_choice="required",
-                                   input=query,
-                                   conversation=conv_id)
+def create_conversation():
+    conversation = client.conversations.create()
+    return conversation.id
 
-print(response.output_text)
 
-response = client.responses.create(
-    input=query,
-    model="gpt-5",
-    instructions="Pick 3 movies relevant to the query from the tool output.",
-    tools=tools,
-    conversation=conv_id,
-)
+logger.info("creating conversation...")
+conv_id = create_conversation()
+logger.info(f"conv_id: {conv_id}")
 
-print(response.output_text)
+
+logger.info("starting loop...")
+while True:
+    query = str(input("Enter query: "))
+    if query == "exit":
+        break
+
+    input_messages = [{"role": "user", "content": f"{query}"}]
+
+    # 2. Prompt the model with tools defined
+    logger.info("getting parameters...")
+    response = client.responses.create(
+        model="gpt-5",
+        tools=tools,
+        input=input_messages,
+        conversation=conv_id
+    )
+
+    for tool_call in response.output:
+        if tool_call.type == "function_call":
+        
+            name = tool_call.name
+            args = json.loads(tool_call.arguments)
+            logger.info("tool call found!")
+            logger.info(f"name: {name}")
+            logger.info(f"args: {args}")
+
+            logger.info("calling function with name, args...")
+            result = call_function(name, args)
+            # append to conversation object
+            logger.info("creating output item in conversation...")
+            client.conversations.items.create(
+                conv_id,
+                items=[
+                    {
+                    "type": "function_call_output",
+                    "call_id": tool_call.call_id,
+                    # json.dumps(result) ?
+                    "output": str(result)
+                    }
+                ]
+            )
+            # logger.info("showing conversation items:")
+            # items = client.conversations.items.list(conv_id, limit=10)
+            # logger.info(items.data)
+
+            logger.info("picking 3 movies...")
+            response = client.responses.create(model="gpt-5",
+                                            input="pick 3 of the movies generated by a tool and explain how they match the query.",
+                                            conversation=conv_id)
+
+    print(response.output_text)
+
+        
+
