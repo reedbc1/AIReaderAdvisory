@@ -27,7 +27,9 @@ assert len(data) == embeddings.shape[
     0], "❌ Mismatch between JSON records and embeddings!"
 
 # 1. Define a list of callable tools for the model
-tools = [{
+tools = [
+    {"type": "web_search"},
+    {
     "type": "function",
     "name": "search_library",
     "description": "Find similar movies to user request.",
@@ -97,7 +99,7 @@ def create_conversation():
 
 logger.info("creating conversation...")
 conv_id = create_conversation()
-logger.info(f"conv_id: {conv_id}")
+# logger.info(f"conv_id: {conv_id}")
 
 
 logger.info("starting loop...")
@@ -122,7 +124,7 @@ while True:
         
             name = tool_call.name
             args = json.loads(tool_call.arguments)
-            logger.info("tool call found!")
+            logger.info("function call found!")
             logger.info(f"name: {name}")
             logger.info(f"args: {args}")
 
