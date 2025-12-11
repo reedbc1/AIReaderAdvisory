@@ -25,8 +25,6 @@ def get_tools() -> list[dict[str, Any]]:
     """Tools available to the conversation model."""
 
     return [{
-        "type": "web_search",
-    }, {
         "type": "function",
         "name": "search_library",
         "description":
@@ -150,7 +148,16 @@ def run_conversation_loop():
         if query.lower() == "exit":
             break
 
-        input_messages = [{"role": "user", "content": f"{query}"}]
+        input_messages = [{
+            "role":
+            "system",
+            "content":
+            ("You must only recommend movies returned by the `search_library` tool. "
+             "Do not rely on outside knowledge or make up titles.")
+        }, {
+            "role": "user",
+            "content": f"{query}"
+        }]
         response = client.responses.create(model="gpt-5",
                                            tools=tools,
                                            input=input_messages,
