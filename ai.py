@@ -1,3 +1,5 @@
+# purpose: create embeddings for vega results
+
 import openai
 import os
 from dotenv import load_dotenv
