@@ -1,6 +1,10 @@
+"""Embedding helpers for the WR dataset."""
+
 import asyncio
 import json
 import os
+from functools import lru_cache
+from typing import Iterable, List
 
 import faiss
 import numpy as np
@@ -8,18 +12,25 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from tqdm import tqdm
 
-load_dotenv()
 
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+@lru_cache(maxsize=1)
+def get_client() -> AsyncOpenAI:
+    """Lazily load environment variables and return the OpenAI client."""
+
+    load_dotenv()
+    return AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
-def record_to_text(record):
-    """Convert a record from the enhanced WR dataset into a promptable string."""
+def record_to_text(record: dict) -> str:
+    """Convert an enriched WR record into a prompt-ready string."""
+
+    materials = record.get("materials") or [{}]
+    material_name = materials[0].get("name", "")
 
     return (
-        f"Title: {record['title']}\n"
+        f"Title: {record.get('title', '')}\n"
         f"Author: {record.get('author', '')}\n"
-        f"Material: {record.get('materials', '')[0].get('name')}\n"
+        f"Material: {material_name}\n"
         f"Publication Date: {record.get('publicationDate', '')}\n"
         f"Contributors: {record.get('contributors', '')}\n"
         f"Subjects: {record.get('subjects', '')}\n"
@@ -27,14 +38,18 @@ def record_to_text(record):
     )
 
 
-async def embed_batch(batch, *, retries=5, pause_seconds=0.1):
+async def embed_batch(batch: Iterable[str], *, retries: int = 5, pause_seconds: float = 0.1,
+                      client: AsyncOpenAI | None = None) -> List[List[float]]:
     """Embed a batch of texts with basic exponential backoff."""
+
+    client = client or get_client()
+    batch_list = list(batch)
 
     for attempt in range(retries):
         try:
             response = await client.embeddings.create(
                 model="text-embedding-3-small",
-                input=batch
+                input=batch_list
             )
             return [item.embedding for item in response.data]
         except Exception as exc:  # pragma: no cover - network error handling
@@ -44,27 +59,30 @@ async def embed_batch(batch, *, retries=5, pause_seconds=0.1):
 
     # fallback if all retries fail
     await asyncio.sleep(pause_seconds)
-    return [None] * len(batch)
+    return [None] * len(batch_list)
 
 
 async def embed_library(
-    json_path="json_files/wr_enhanced.json",
+    json_path: str = "json_files/wr_enhanced.json",
     *,
-    batch_size=100,
-    index_path="library.index",
-    embeddings_path="library_embeddings.npy",
+    batch_size: int = 100,
+    index_path: str = "library.index",
+    embeddings_path: str = "library_embeddings.npy",
+    client: AsyncOpenAI | None = None,
 ):
     """Embed the enhanced WR dataset and write FAISS index + numpy matrix."""
+
+    client = client or get_client()
 
     with open(json_path, "r", encoding="utf-8") as file:
         records = json.load(file)
 
     texts = [record_to_text(record) for record in records]
-    all_embeddings = []
+    all_embeddings: list[list[float]] = []
 
     for start in tqdm(range(0, len(texts), batch_size)):
         batch = texts[start:start + batch_size]
-        embeddings = await embed_batch(batch)
+        embeddings = await embed_batch(batch, client=client)
         all_embeddings.extend(embeddings)
         # small pause to respect rate limits
         await asyncio.sleep(0.1)
