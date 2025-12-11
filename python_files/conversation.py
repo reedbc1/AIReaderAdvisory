@@ -87,15 +87,29 @@ def search_library(query: str,
                                         input=query)
     query_vec = np.array(response.data[0].embedding,
                          dtype="float32").reshape(1, -1)
+
+    # Cap the requested results to the number of vectors the index knows
+    # about so FAISS never returns invalid negative indices when k is
+    # too large.
+    k = max(1, min(k, index.ntotal))
     distances, indices = index.search(query_vec, k)
 
     results = []
     for dist, idx in zip(distances[0], indices[0]):
+        if idx < 0:
+            continue
+
         record = records[idx]
+        # Some records do not have material metadata. Using a default empty
+        # list and a conditional lookup avoids key errors and keeps the
+        # response consistent.
+        materials = record.get("materials") or []
+        material_name = materials[0].get("name") if materials else None
+
         results.append({
             "title": record.get("title"),
             "author": record.get("author"),
-            "material": record.get("materials", [])[0].get("name"),
+            "material": material_name,
             "year": record.get("publicationDate"),
             "summary": record.get("summary"),
             "subjects": record.get("subjects"),
