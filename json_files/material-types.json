@@ -1,0 +1,402 @@
+[
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "1",
+        "description": "Book",
+        "workType": "Book",
+        "formatGroup": "Book",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "10",
+        "description": "Manuscript Music",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "11",
+        "description": "Printed Cartographic Material",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "12",
+        "description": "Manuscript Cartographic Material",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "13",
+        "description": "Map",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "14",
+        "description": "Globe",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "15",
+        "description": "Manuscript Material",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "16",
+        "description": "Projected Medium",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "17",
+        "description": "Motion Picture",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "18",
+        "description": "Videorecording",
+        "workType": "Video",
+        "formatGroup": "DVD",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "19",
+        "description": "Two Dimensional Nonprojected Graphic",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "2",
+        "description": "Printed or Manuscript Music",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "20",
+        "description": "Three Dimensional Object (Artifact)",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "21",
+        "description": "Musical Sound Recording",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "22",
+        "description": "Nonmusical Sound Recording",
+        "workType": "Book",
+        "formatGroup": "Audiobook",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "23",
+        "description": "Kit",
+        "workType": "Book",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "24",
+        "description": "Periodical",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "25",
+        "description": "Newspaper",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "26",
+        "description": "Microform",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "27",
+        "description": "Large Print",
+        "workType": "Book",
+        "formatGroup": "Large Print",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "28",
+        "description": "Braille",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "3",
+        "description": "Cartographic Material",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "33",
+        "description": "DVD",
+        "workType": "Video",
+        "formatGroup": "DVD",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "34",
+        "description": "Videotape",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "35",
+        "description": "Music CD",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "36",
+        "description": "Ebook",
+        "workType": "Book",
+        "formatGroup": "eBook",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "37",
+        "description": "Audio Books",
+        "workType": "Book",
+        "formatGroup": "Audiobook",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "38",
+        "description": "Digital Collection",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "39",
+        "description": "Abstract",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "4",
+        "description": "Visual Materials",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "40",
+        "description": "Blu-ray Disc",
+        "workType": "Video",
+        "formatGroup": "Blu-ray",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "41",
+        "description": "Eaudiobook",
+        "workType": "Book",
+        "formatGroup": "eAudiobook",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "42",
+        "description": "Book + CD",
+        "workType": "Book",
+        "formatGroup": "Book",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "43",
+        "description": "Book + Cassette",
+        "workType": "Book",
+        "formatGroup": "Book",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "44",
+        "description": "Video Game",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "45",
+        "description": "Blu-ray + DVD",
+        "workType": "Video",
+        "formatGroup": "Blu-ray",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "46",
+        "description": "Book + DVD",
+        "workType": "Book",
+        "formatGroup": "Book",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "47",
+        "description": "Atlas",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "48",
+        "description": "Streaming Music",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "49",
+        "description": "Streaming Video",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "5",
+        "description": "Sound Recording",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "50",
+        "description": "Emagazine",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "51",
+        "description": "Vinyl",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "52",
+        "description": "Audio Book on CD",
+        "workType": "Book",
+        "formatGroup": "Audiobook",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "53",
+        "description": "Audio Book on Cassette",
+        "workType": "Book",
+        "formatGroup": "Audiobook",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "6",
+        "description": "Electronic Resources",
+        "workType": "Book",
+        "formatGroup": "eBook",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "7",
+        "description": "Archival/Mixed Materials",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "8",
+        "description": "Serial",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "9",
+        "description": "Printed Music",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    },
+    {
+        "allowRequestsWithNoItems": true,
+        "code": "article",
+        "description": "Article",
+        "workType": "Other",
+        "formatGroup": "Other",
+        "alwaysAvailable": false
+    }
+]

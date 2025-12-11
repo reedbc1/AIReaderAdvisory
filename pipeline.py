@@ -3,9 +3,9 @@
 import argparse
 import asyncio
 
-from ai import embed_library
+from catalog import editions_main, vega_search
+from embeddings import embed_library
 from conversation import run_conversation_loop
-from main import editions_main, vega_search
 
 
 async def run_async_steps(fetch, embed):
