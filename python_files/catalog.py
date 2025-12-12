@@ -3,20 +3,24 @@ import asyncio
 import json
 from tqdm.asyncio import tqdm_asyncio  # loading bars for asyncio
 import os
+from choose_dir import replace_with_utf8_hex
 
 BASE_SEARCH_URL = "https://na2.iiivega.com/api/search-result/search/format-groups"
 BASE_EDITION_URL = "https://na2.iiivega.com/api/search-result/editions"
 CONCURRENCY = 5
-searchText = "the purge"  # use "*" to get all results
-materialTypeIds = "33"
-locationIds = "59"
+
+searchText = "*"  # use "*" to get all results
+
+materialTypeIds = "33" # DVDs
+locationIds = "59" # WR
 
 searchTextFormat = searchText.replace(" ", "_")
+searchTextFormat = replace_with_utf8_hex(searchText) # replace invalid characters with utf8-hex
+
 materialTypeIdsFormat = materialTypeIds.replace(" ", "").replace(",", ".")
 locationIdsFormat = locationIds.replace(" ", "").replace(",", ".")
 
 directory_name = f"data/{searchTextFormat}_{materialTypeIdsFormat}_{locationIdsFormat}"
-os.makedirs(directory_name, exist_ok=True)
 
 RESULTS_FILE = f"{directory_name}/wr.json"
 ENHANCED_FILE = f"{directory_name}/wr_enhanced.json"
@@ -53,6 +57,10 @@ HEADERS = {
 }
 
 
+async def create_dir(directory_name = directory_name):
+    os.makedirs(directory_name, exist_ok=True)
+
+
 async def fetch_page(session, page_num, page_size, semaphore):
     payload = {
         "searchText": f"{searchText}",
@@ -60,8 +68,8 @@ async def fetch_page(session, page_num, page_size, semaphore):
         "sortOrder": "asc",
         "searchType": "everything",
         "universalLimiterIds": ["at_library"],  # available materials only
-        "locationIds": [locationIds],  # WR
-        "materialTypeIds": [materialTypeIds],  # DVDs
+        "locationIds": [locationIds],  
+        "materialTypeIds": [materialTypeIds],  
         "pageNum": page_num,
         "pageSize": page_size,
         "resourceType": "FormatGroup"

@@ -1,6 +1,21 @@
 import os
 
 
+def replace_with_utf8_hex(s: str) -> str:
+    forbidden = '*?<>:"|\\'
+
+    result = []
+    for ch in s:
+        if ch in forbidden:
+            # convert to UTF-8 hex (ASCII → one byte)
+            hex_value = ch.encode('utf-8').hex().upper()
+            result.append(hex_value)
+        else:
+            result.append(ch)
+
+    return "".join(result)
+
+
 def list_subdirectories(directory: str):
     if not os.path.isdir(directory):
         raise FileNotFoundError(f"Directory not found: {directory}")

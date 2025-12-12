@@ -3,13 +3,14 @@
 import argparse
 import asyncio
 
-from catalog import editions_main, vega_search
+from catalog import editions_main, vega_search, create_dir
 from embeddings import embed_library
 from conversation import run_conversation_loop
 
 
 async def run_async_steps(fetch, embed):
     if fetch:
+        await create_dir()
         await vega_search()
         await editions_main()
 
