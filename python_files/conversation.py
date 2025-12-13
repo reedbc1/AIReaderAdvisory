@@ -13,82 +13,84 @@ from openai import OpenAI
 from choose_dir import prompt_for_subdirectory
 
 
+# ---------------------------------------------------------------------
+# Client
+# ---------------------------------------------------------------------
+
 @lru_cache(maxsize=1)
 def get_client() -> OpenAI:
-    """Lazily load environment variables and return the OpenAI client."""
-
     load_dotenv()
     return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
-def get_tools() -> list[dict[str, Any]]:
-    """Tools available to the conversation model."""
+# ---------------------------------------------------------------------
+# Optional web tool (placeholder)
+# ---------------------------------------------------------------------
 
+def get_web_tools() -> list[dict[str, Any]]:
     return [{
         "type": "function",
-        "name": "search_library",
-        "description":
-        "Find movies for the user based on what they say they are looking for.",
+        "name": "web_search",
+        "description": "Look up recent or external context to refine a query.",
         "strict": True,
         "parameters": {
             "type": "object",
             "properties": {
-                "query": {
-                    "type":
-                    "string",
-                    "description":
-                    ("A description of what kinds of movies the customer is looking for,"
-                     "including the names of movies and actors.")
-                },
-                "k": {
-                    "type": "integer",
-                    "description":
-                    "The number of top similar results to return.",
-                    "default": 5
-                }
+                "query": {"type": "string"}
             },
-            "required": ["query", "k"],
+            "required": ["query"],
             "additionalProperties": False
         }
     }]
 
 
-def load_library() -> Tuple[faiss.Index, list[dict]]:
-    """Load FAISS index and JSON records for interactive search."""
+def run_web_search(query: str) -> dict:
+    # Placeholder — plug in real web search here
+    return {
+        "summary": f"External context related to: {query}"
+    }
 
+
+# ---------------------------------------------------------------------
+# Library loading + search
+# ---------------------------------------------------------------------
+
+def load_library() -> Tuple[faiss.Index, list[dict]]:
     directory = prompt_for_subdirectory()
 
-    index_path: str = f"{directory}/library.index"
-    json_path: str = f"{directory}/wr_enhanced.json"
-    embeddings_path: str = f"{directory}/library_embeddings.npy"
+    index_path = f"{directory}/library.index"
+    json_path = f"{directory}/wr_enhanced.json"
+    embeddings_path = f"{directory}/library_embeddings.npy"
 
     index = faiss.read_index(index_path)
-    with open(json_path, encoding="utf-8") as file:
-        records = json.load(file)
+    with open(json_path, encoding="utf-8") as f:
+        records = json.load(f)
 
     embeddings = np.load(embeddings_path)
-    assert len(records) == embeddings.shape[
-        0], "❌ Mismatch between JSON records and embeddings!"
+    assert len(records) == embeddings.shape[0], "❌ Index / JSON mismatch"
+
     return index, records
 
 
-def search_library(query: str,
-                   k: int,
-                   index: faiss.Index,
-                   records: list[dict],
-                   *,
-                   client: OpenAI | None = None) -> List[Dict[str, Any]]:
-    """Return top-k most similar library items to a text query."""
+def search_library(
+    query: str,
+    k: int,
+    *,
+    index: faiss.Index,
+    records: list[dict],
+    client: OpenAI
+) -> List[Dict[str, Any]]:
 
-    client = client or get_client()
-    response = client.embeddings.create(model="text-embedding-3-small",
-                                        input=query)
-    query_vec = np.array(response.data[0].embedding,
-                         dtype="float32").reshape(1, -1)
+    emb = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=query
+    )
 
-    # Cap the requested results to the number of vectors the index knows
-    # about so FAISS never returns invalid negative indices when k is
-    # too large.
+    query_vec = np.array(
+        emb.data[0].embedding,
+        dtype="float32"
+    ).reshape(1, -1)
+
     k = max(1, min(k, index.ntotal))
     distances, indices = index.search(query_vec, k)
 
@@ -98,9 +100,6 @@ def search_library(query: str,
             continue
 
         record = records[idx]
-        # Some records do not have material metadata. Using a default empty
-        # list and a conditional lookup avoids key errors and keeps the
-        # response consistent.
         materials = record.get("materials") or []
         material_name = materials[0].get("name") if materials else None
 
@@ -114,84 +113,132 @@ def search_library(query: str,
             "contributors": record.get("contributors"),
             "distance": float(dist)
         })
+
     return results
 
 
-def call_function(name: str, args: dict[str, Any], *, index: faiss.Index,
-                  records: list[dict], client: OpenAI) -> list[dict[str, Any]]:
-    """Dispatch available function tools."""
+# ---------------------------------------------------------------------
+# Conversation helpers
+# ---------------------------------------------------------------------
 
-    if name == "search_library":
-        return search_library(**args,
-                              index=index,
-                              records=records,
-                              client=client)
-    raise ValueError(f"Unknown tool: {name}")
+def create_conversation(client: OpenAI) -> str:
+    conv = client.conversations.create()
+    return conv.id
 
 
-def create_conversation(*, client: OpenAI | None = None) -> str:
-    """Create a new conversation and return its id."""
-
-    client = client or get_client()
-    conversation = client.conversations.create()
-    return conversation.id
-
+# ---------------------------------------------------------------------
+# Main loop
+# ---------------------------------------------------------------------
 
 def run_conversation_loop():
     client = get_client()
-    tools = get_tools()
     index, records = load_library()
-    conv_id = create_conversation(client=client)
+    conv_id = create_conversation(client)
+
+    web_tools = get_web_tools()
 
     while True:
-        query = str(input("Enter query (or 'exit' to quit): "))
+        query = input("Enter query (or 'exit'): ").strip()
         if query.lower() == "exit":
             break
 
-        input_messages = [{
-            "role":
-            "system",
-            "content":
-            ("You must only recommend movies returned by the `search_library` tool. "
-             "Do not rely on outside knowledge or make up titles.")
-        }, {
-            "role": "user",
-            "content": f"{query}"
+        # -------------------------------------------------------------
+        # STAGE 1: Query refinement + optional web lookup
+        # -------------------------------------------------------------
+
+        planning = client.responses.create(
+            model="gpt-5",
+            tools=web_tools,
+            input=[{
+                "role": "system",
+                "content": (
+                    "Rewrite the user's request into the best possible "
+                    "library search query. If recent or external context "
+                    "would help, call web_search. You must eventually "
+                    "produce a refined query."
+                )
+            }, {
+                "role": "user",
+                "content": query
+            }],
+            conversation=conv_id
+        )
+
+        for item in planning.output or []:
+            if item.type == "function_call" and item.name == "web_search":
+                web_result = run_web_search(
+                    json.loads(item.arguments)["query"]
+                )
+
+                client.conversations.items.create(
+                    conv_id,
+                    items=[{
+                        "type": "function_call_output",
+                        "call_id": item.call_id,
+                        "output": json.dumps(web_result)
+                    }]
+                )
+
+        # Ask model to finalize refined query
+        refined = client.responses.create(
+            model="gpt-5",
+            input=[{
+                "role": "system",
+                "content": "Return ONLY the final refined library search query."
+            }],
+            conversation=conv_id
+        )
+
+        refined_query = refined.output_text.strip()
+
+        # -------------------------------------------------------------
+        # STAGE 2: 🔒 FORCED library lookup (model cannot skip)
+        # -------------------------------------------------------------
+
+        library_results = search_library(
+            query=refined_query,
+            k=5,
+            index=index,
+            records=records,
+            client=client
+        )
+
+        client.conversations.items.create(
+        conv_id,
+        items=[{
+            "type": "message",
+            "role": "system",
+            "content": [{
+                "type": "input_text",
+                "text": (
+                    "LIBRARY SEARCH RESULTS (authoritative, must be used):\n\n"
+                    + json.dumps(library_results, indent=2)
+                )
+            }]
         }]
-        response = client.responses.create(model="gpt-5",
-                                           tools=tools,
-                                           input=input_messages,
-                                           conversation=conv_id)
+        )
 
-        for tool_call in response.output or []:
-            if tool_call.type != "function_call":
-                continue
 
-            name = tool_call.name
-            args = json.loads(tool_call.arguments)
-            result = call_function(name,
-                                   args,
-                                   index=index,
-                                   records=records,
-                                   client=client)
+        # -------------------------------------------------------------
+        # STAGE 3: Grounded final response
+        # -------------------------------------------------------------
 
-            client.conversations.items.create(conv_id,
-                                              items=[{
-                                                  "type":
-                                                  "function_call_output",
-                                                  "call_id":
-                                                  tool_call.call_id,
-                                                  "output":
-                                                  json.dumps(result)
-                                              }])
+        final = client.responses.create(
+            model="gpt-5",
+            input=[{
+                "role": "system",
+                "content": (
+                    "Choose the library items that most closely match the request."
+                    "Explain how they match the request. "
+                    "You MUST use ONLY the items provided by the library tool. "
+                    "If nothing matches, say so."
+                )
+            }],
+            conversation=conv_id
+        )
 
-            response = client.responses.create(
-                model="gpt-5",
-                input=
-                "Pick three of the movies generated by a tool and explain how they match the query.",
-                conversation=conv_id)
-
-        print(response.output_text)
+        print(final.output_text)
+        print("-" * 60)
 
 
 if __name__ == "__main__":

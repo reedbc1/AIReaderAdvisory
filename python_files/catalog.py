@@ -9,7 +9,7 @@ BASE_SEARCH_URL = "https://na2.iiivega.com/api/search-result/search/format-group
 BASE_EDITION_URL = "https://na2.iiivega.com/api/search-result/editions"
 CONCURRENCY = 5
 
-searchText = "*"  # use "*" to get all results
+searchText = "stranger things"  # use "*" to get all results
 
 materialTypeIds = "33" # DVDs
 locationIds = "59" # WR
