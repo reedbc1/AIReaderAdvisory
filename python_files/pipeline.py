@@ -3,16 +3,15 @@
 import argparse
 import asyncio
 
-from catalog import editions_main, vega_search, create_dir
-from embeddings import embed_library
 from conversation import run_conversation_loop
+from embeddings import embed_library
+from stateful_pipeline import sync_catalog_state
 
 
 async def run_async_steps(fetch, embed):
     if fetch:
-        await create_dir()
-        await vega_search()
-        await editions_main()
+        summary = await sync_catalog_state()
+        print(f"Catalog sync → {summary}")
 
     if embed:
         await embed_library()

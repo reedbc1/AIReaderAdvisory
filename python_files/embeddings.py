@@ -13,6 +13,7 @@ from openai import AsyncOpenAI
 from tqdm import tqdm
 
 from choose_dir import prompt_for_subdirectory
+from stateful_pipeline import STATE_FILE, load_state, save_state
 
 
 @lru_cache(maxsize=1)
@@ -61,48 +62,78 @@ async def embed_batch(
 
 
 async def embed_library(client: AsyncOpenAI | None = None):
-    """Embed the enhanced WR dataset and write FAISS index + NumPy matrix."""
+    """Embed new/changed items and rebuild the FAISS index when required."""
     client = client or get_client()
     batch_size = 100
 
     print("\n📁 Choose dataset folder:")
     directory = prompt_for_subdirectory()
 
-    # Always use this JSON filename
     json_path = os.path.join(directory, "wr_enhanced.json")
-
-    if not os.path.exists(json_path):
-        raise FileNotFoundError(
-            f"Could not find wr_enhanced.json in: {directory}")
-
     index_path = os.path.join(directory, "library.index")
     embeddings_path = os.path.join(directory, "library_embeddings.npy")
 
-    print(f"\n📄 Loading records from {json_path} ...")
-    with open(json_path, "r", encoding="utf-8") as f:
-        records = json.load(f)
+    state_path = os.path.join(directory, os.path.basename(STATE_FILE))
+    state = load_state(state_path)
+    records = state.get("records", [])
 
-    texts = [record_to_text(record) for record in records]
-    all_embeddings: list[list[float] | None] = []
+    if not records and os.path.exists(json_path):
+        # Backwards compatibility: load legacy enhanced file when no state is present
+        with open(json_path, "r", encoding="utf-8") as f:
+            records = json.load(f)
+        state = {"records": records, "needs_index_rebuild": True}
 
-    for start in tqdm(range(0, len(texts), batch_size)):
-        batch = texts[start:start + batch_size]
-        embeddings = await embed_batch(batch, client=client)
-        all_embeddings.extend(embeddings)
-        await asyncio.sleep(0.1)
+    # Ensure in-memory list is attached to state for persistence
+    state["records"] = records
 
-    valid_embeddings = [e for e in all_embeddings if e is not None]
-    embedding_matrix = np.array(valid_embeddings).astype("float32")
+    pending = [r for r in records if not r.get("embedded")]
+    if not pending:
+        print("\nℹ️ No records require embedding.")
+    else:
+        print(f"\n📄 Embedding {len(pending)} new/updated records ...")
+        texts = [record_to_text(record) for record in pending]
+        all_embeddings: list[list[float] | None] = []
 
-    index = faiss.IndexFlatL2(embedding_matrix.shape[1])
-    index.add(embedding_matrix)
+        for start in tqdm(range(0, len(texts), batch_size)):
+            batch = texts[start:start + batch_size]
+            embeddings = await embed_batch(batch, client=client)
+            all_embeddings.extend(embeddings)
+            await asyncio.sleep(0.1)
 
-    faiss.write_index(index, index_path)
-    np.save(embeddings_path, embedding_matrix)
+        for record, emb in zip(pending, all_embeddings):
+            record["embedded"] = emb is not None
+            record["embedding"] = emb
 
-    print("\n✅ Done. Saved FAISS index and embeddings.")
-    print(f"Index → {index_path}")
-    print(f"Embeddings → {embeddings_path}")
+        state["needs_index_rebuild"] = True
+
+    if state.get("needs_index_rebuild"):
+        embedded_records = [r for r in records if r.get("embedded")]
+        if not embedded_records:
+            print("\n⚠️ No embedded records available; skipping index rebuild.")
+        else:
+            embedding_matrix = np.array([r.get("embedding") for r in embedded_records],
+                                        dtype="float32")
+            index = faiss.IndexFlatL2(embedding_matrix.shape[1])
+            index.add(embedding_matrix)
+
+            # Persist metadata for downstream consumers
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump([{
+                    k: v
+                    for k, v in record.items()
+                    if k not in {"embedded", "embedding", "source_hash"}
+                } for record in embedded_records], f, ensure_ascii=False, indent=2)
+
+            faiss.write_index(index, index_path)
+            np.save(embeddings_path, embedding_matrix)
+
+            state["needs_index_rebuild"] = False
+            print("\n✅ Rebuilt FAISS index and embeddings.")
+    else:
+        print("\nℹ️ Skipping index rebuild (no changes detected).")
+
+    save_state(state, state_path)
+    print(f"State saved → {state_path}")
 
 
 async def main():
