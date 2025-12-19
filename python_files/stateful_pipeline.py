@@ -1,4 +1,17 @@
-"""Incremental, state-aware catalog ingestion helpers."""
+"""
+Stateful catalog pipeline for the WR dataset.
+
+Responsibilities:
+- Diff canonical catalog snapshot vs stored state
+- Enrich new/changed records (editions, metadata)
+- Maintain wr_state.json
+- Produce wr_enhanced.json (no embeddings)
+
+Assumptions:
+- Canonical snapshot already exists at:
+    data/<RUN_ID>/wr.json
+- Partitioning + merging handled upstream
+"""
 
 from __future__ import annotations
 
@@ -11,18 +24,13 @@ from typing import Dict, Iterable, List
 
 import aiohttp
 
-from catalog import (
-    CONCURRENCY,
-    ENHANCED_FILE,
-    RESULTS_FILE,
-    create_dir,
-    directory_name,
-    process_record,
-    vega_search,
-)
+# These now come from your ingestion layer
+from catalog import HTTP_CONCURRENCY
+from enrichment import process_record
 
-STATE_FILE = f"{directory_name}/wr_state.json"
-
+# ---------------------------------------------------------------------------
+# Types
+# ---------------------------------------------------------------------------
 
 @dataclass
 class DiffResult:
@@ -36,15 +44,14 @@ class DiffResult:
 # State helpers
 # ---------------------------------------------------------------------------
 
-def load_state(path: str = STATE_FILE) -> dict:
-    """Load the persisted state file if present."""
+def load_state(path: str) -> dict:
     if not os.path.exists(path):
         return {"records": [], "needs_index_rebuild": False}
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def save_state(state: dict, path: str = STATE_FILE) -> None:
+def save_state(state: dict, path: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
@@ -55,18 +62,26 @@ def save_state(state: dict, path: str = STATE_FILE) -> None:
 # ---------------------------------------------------------------------------
 
 def source_hash(record: dict) -> str:
-    """Stable hash of the catalog-provided fields (pre-enrichment)."""
-    return hashlib.md5(json.dumps(record, sort_keys=True).encode()).hexdigest()
+    """
+    Stable hash of catalog fields *prior* to embedding.
+    This intentionally ignores runtime-only fields.
+    """
+    clean = {
+        k: v
+        for k, v in record.items()
+        if k not in {"embedded", "embedding"}
+    }
+    return hashlib.md5(json.dumps(clean, sort_keys=True).encode()).hexdigest()
 
 
 def build_lookup(records: Iterable[dict]) -> Dict[str, dict]:
-    return {r["id"]: r for r in records if "id" in r}
+    return {r["id"]: r for r in records if r.get("id")}
 
 
 def diff_catalog_records(
-    catalog_records: List[dict], stored_records: List[dict]
+    catalog_records: List[dict],
+    stored_records: List[dict],
 ) -> DiffResult:
-    """Identify new/changed/unchanged/removed items by stable ID."""
     stored_lookup = build_lookup(stored_records)
     catalog_lookup = build_lookup(catalog_records)
 
@@ -75,12 +90,12 @@ def diff_catalog_records(
     unchanged_records: list[dict] = []
 
     for record in catalog_records:
-        record_id = record.get("id")
-        if record_id is None:
+        rid = record.get("id")
+        if not rid:
             continue
 
-        existing = stored_lookup.get(record_id)
         record_hash = source_hash(record)
+        existing = stored_lookup.get(rid)
 
         if existing is None:
             new_records.append({**record, "source_hash": record_hash})
@@ -89,8 +104,17 @@ def diff_catalog_records(
         else:
             unchanged_records.append(existing)
 
-    removed_ids = [rid for rid in stored_lookup.keys() if rid not in catalog_lookup]
-    return DiffResult(new_records, changed_records, unchanged_records, removed_ids)
+    removed_ids = [
+        rid for rid in stored_lookup.keys()
+        if rid not in catalog_lookup
+    ]
+
+    return DiffResult(
+        new_records=new_records,
+        changed_records=changed_records,
+        unchanged_records=unchanged_records,
+        removed_ids=removed_ids,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -98,32 +122,41 @@ def diff_catalog_records(
 # ---------------------------------------------------------------------------
 
 async def enrich_records(records: List[dict]) -> List[dict]:
+    """
+    Enrich records with edition metadata (subjects, summary, contributors).
+    """
     if not records:
         return []
 
-    semaphore = asyncio.Semaphore(CONCURRENCY)
+    semaphore = asyncio.Semaphore(HTTP_CONCURRENCY)
+
     async with aiohttp.ClientSession() as session:
-        tasks = [process_record(record, session, semaphore) for record in records]
+        tasks = [
+            process_record(record, session, semaphore)
+            for record in records
+        ]
         return await asyncio.gather(*tasks)
 
 
 # ---------------------------------------------------------------------------
-# Sync orchestration
+# Snapshot helpers
 # ---------------------------------------------------------------------------
 
-async def load_catalog_snapshot() -> List[dict]:
-    """Fetch the latest catalog snapshot and return parsed records."""
-    await create_dir()
-    await vega_search()
-    try:
-        with open(RESULTS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
+def load_catalog_snapshot(path: str) -> List[dict]:
+    """
+    Load canonical catalog snapshot (already merged from partitions).
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Catalog snapshot not found: {path}")
+
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
-def _drop_runtime_fields(record: dict) -> dict:
-    """Remove embedding metadata so wr_enhanced stays clean."""
+def drop_runtime_fields(record: dict) -> dict:
+    """
+    Remove runtime-only fields so wr_enhanced.json stays clean.
+    """
     return {
         k: v
         for k, v in record.items()
@@ -131,64 +164,89 @@ def _drop_runtime_fields(record: dict) -> dict:
     }
 
 
-def write_enhanced_snapshot(records: List[dict]) -> None:
-    """Persist the enriched records without embeddings for downstream use."""
-    clean_records = [_drop_runtime_fields(r) for r in records]
-    with open(ENHANCED_FILE, "w", encoding="utf-8") as f:
-        json.dump(clean_records, f, ensure_ascii=False, indent=2)
+def write_enhanced_snapshot(records: List[dict], path: str) -> None:
+    clean = [drop_runtime_fields(r) for r in records]
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(clean, f, ensure_ascii=False, indent=2)
 
 
-async def sync_catalog_state() -> dict:
-    """Incrementally sync catalog → local state."""
-    catalog_records = await load_catalog_snapshot()
-    state = load_state()
+# ---------------------------------------------------------------------------
+# Orchestration
+# ---------------------------------------------------------------------------
+
+async def sync_catalog_state(
+    *,
+    run_dir: str,
+) -> dict:
+    """
+    Incrementally sync canonical catalog snapshot into local state.
+
+    Expects:
+      run_dir/
+        wr.json
+        wr_state.json
+        wr_enhanced.json
+    """
+    snapshot_path = os.path.join(run_dir, "wr.json")
+    state_path = os.path.join(run_dir, "wr_state.json")
+    enhanced_path = os.path.join(run_dir, "wr_enhanced.json")
+
+    catalog_records = load_catalog_snapshot(snapshot_path)
+    state = load_state(state_path)
     stored_records: list[dict] = state.get("records", [])
 
     diff = diff_catalog_records(catalog_records, stored_records)
 
-    # Enrich new + changed
+    # Enrich only new + changed
     to_enrich = diff.new_records + diff.changed_records
     enriched = await enrich_records(to_enrich)
 
     updated_records: list[dict] = []
-    # Keep unchanged as-is
     updated_records.extend(diff.unchanged_records)
 
-    # Apply new/changed with metadata flags
     incoming_lookup = build_lookup(diff.new_records + diff.changed_records)
+
     for record in enriched:
         rid = record.get("id")
         base = incoming_lookup.get(rid, {})
-        merged = {**record, "embedded": False, "embedding": None, **base}
+        merged = {
+            **record,
+            "embedded": False,
+            "embedding": None,
+            **base,
+        }
         updated_records.append(merged)
 
-    # Preserve ids only present in stored when unchanged/updated
-    updated_records = [r for r in updated_records if r.get("id") not in diff.removed_ids]
+    # Remove deleted items
+    updated_records = [
+        r for r in updated_records
+        if r.get("id") not in diff.removed_ids
+    ]
 
-    needs_index_rebuild = state.get("needs_index_rebuild", False)
-    if diff.removed_ids or diff.new_records or diff.changed_records:
-        needs_index_rebuild = True
+    needs_index_rebuild = bool(
+        diff.new_records or diff.changed_records or diff.removed_ids
+    )
 
-    state = {
+    state_out = {
         "records": sorted(updated_records, key=lambda r: r.get("id", "")),
         "needs_index_rebuild": needs_index_rebuild,
     }
 
-    save_state(state)
-    write_enhanced_snapshot(state["records"])
+    save_state(state_out, state_path)
+    write_enhanced_snapshot(state_out["records"], enhanced_path)
 
     return {
         "new": len(diff.new_records),
         "changed": len(diff.changed_records),
         "unchanged": len(diff.unchanged_records),
         "removed": len(diff.removed_ids),
+        "needs_index_rebuild": needs_index_rebuild,
     }
 
 
 __all__ = [
-    "STATE_FILE",
+    "DiffResult",
     "diff_catalog_records",
     "enrich_records",
-    "load_catalog_snapshot",
     "sync_catalog_state",
 ]

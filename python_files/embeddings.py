@@ -1,10 +1,22 @@
-"""Embedding helpers for the WR dataset."""
+"""
+Embedding helpers for the WR dataset (canonical, stateful version).
+
+Assumes directory layout created by the partitioned Vega ingestion pipeline:
+
+data/<RUN_ID>/
+├─ wr_enhanced.json        # canonical enriched snapshot
+├─ wr_state.json           # state file (records + needs_index_rebuild)
+├─ library.index           # FAISS index
+└─ library_embeddings.npy  # embedding matrix
+"""
+
+from __future__ import annotations
 
 import asyncio
 import json
 import os
 from functools import lru_cache
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 import faiss
 import numpy as np
@@ -12,132 +24,168 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from tqdm import tqdm
 
-from choose_dir import prompt_for_subdirectory
 from stateful_pipeline import STATE_FILE, load_state, save_state
 
 
+# ---------------------------------------------------------------------
+# OpenAI client
+# ---------------------------------------------------------------------
+
 @lru_cache(maxsize=1)
 def get_client() -> AsyncOpenAI:
-    """Lazily load environment variables and return the OpenAI client."""
     load_dotenv()
     return AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
+# ---------------------------------------------------------------------
+# Record → embedding text
+# ---------------------------------------------------------------------
+
 def record_to_text(record: dict) -> str:
-    """Convert an enriched WR record into a prompt-ready string."""
     materials = record.get("materials") or [{}]
     material_name = materials[0].get("name", "")
 
-    return (f"Title: {record.get('title', '')}\n"
-            f"Author: {record.get('author', '')}\n"
-            f"Material: {material_name}\n"
-            f"Publication Date: {record.get('publicationDate', '')}\n"
-            f"Contributors: {record.get('contributors', '')}\n"
-            f"Subjects: {record.get('subjects', '')}\n"
-            f"Description: {record.get('summary', '')}")
+    return (
+        f"Title: {record.get('title', '')}\n"
+        f"Author: {record.get('author', '')}\n"
+        f"Material: {material_name}\n"
+        f"Publication Date: {record.get('publicationDate', '')}\n"
+        f"Contributors: {record.get('contributors', '')}\n"
+        f"Subjects: {record.get('subjects', '')}\n"
+        f"Description: {record.get('summary', '')}"
+    )
 
 
-async def embed_batch(
-        batch: Iterable[str],
-        *,
-        retries: int = 5,
-        pause_seconds: float = 0.1,
-        client: AsyncOpenAI | None = None) -> List[List[float] | None]:
-    """Embed a batch of texts with exponential backoff."""
-    client = client or get_client()
-    batch_list = list(batch)
+# ---------------------------------------------------------------------
+# Per-record embedding with retries (Gemini-safe pattern)
+# ---------------------------------------------------------------------
 
+async def embed_one(
+    text: str,
+    *,
+    client: AsyncOpenAI,
+    retries: int = 5,
+) -> Optional[list[float]]:
     for attempt in range(retries):
         try:
             response = await client.embeddings.create(
-                model="text-embedding-3-small", input=batch_list)
-            return [item.embedding for item in response.data]
+                model="text-embedding-3-small",
+                input=text,
+            )
+            return response.data[0].embedding
         except Exception as exc:
-            wait_time = 2**attempt
-            print(f"Error: {exc} — retrying in {wait_time}s...")
-            await asyncio.sleep(wait_time)
+            wait = min(30, 2 ** attempt)
+            print(f"⚠️ Embedding error ({exc}) — retrying in {wait}s")
+            await asyncio.sleep(wait)
 
-    print("❌ All retries failed — returning None embeddings.")
-    return [None] * len(batch_list)
+    print("❌ Embedding failed after retries.")
+    return None
 
 
-async def embed_library(client: AsyncOpenAI | None = None):
-    """Embed new/changed items and rebuild the FAISS index when required."""
-    client = client or get_client()
-    batch_size = 100
+# ---------------------------------------------------------------------
+# Main embedding orchestration
+# ---------------------------------------------------------------------
 
-    print("\n📁 Choose dataset folder:")
-    directory = prompt_for_subdirectory()
+async def embed_library(run_dir: str) -> None:
+    """
+    Embed new/changed records and rebuild FAISS index if required.
 
-    json_path = os.path.join(directory, "wr_enhanced.json")
-    index_path = os.path.join(directory, "library.index")
-    embeddings_path = os.path.join(directory, "library_embeddings.npy")
+    run_dir: e.g. data/*_None_59
+    """
+    client = get_client()
 
-    state_path = os.path.join(directory, os.path.basename(STATE_FILE))
+    json_path = os.path.join(run_dir, "wr_enhanced.json")
+    index_path = os.path.join(run_dir, "library.index")
+    embeddings_path = os.path.join(run_dir, "library_embeddings.npy")
+
+    state_path = os.path.join(run_dir, os.path.basename(STATE_FILE))
     state = load_state(state_path)
-    records = state.get("records", [])
 
-    if not records and os.path.exists(json_path):
-        # Backwards compatibility: load legacy enhanced file when no state is present
-        with open(json_path, "r", encoding="utf-8") as f:
-            records = json.load(f)
-        state = {"records": records, "needs_index_rebuild": True}
+    records: list[dict] = state.get("records", [])
 
-    # Ensure in-memory list is attached to state for persistence
-    state["records"] = records
+    if not records:
+        raise RuntimeError("State file contains no records — cannot embed.")
 
     pending = [r for r in records if not r.get("embedded")]
+
     if not pending:
-        print("\nℹ️ No records require embedding.")
+        print("ℹ️ No records require embedding.")
     else:
-        print(f"\n📄 Embedding {len(pending)} new/updated records ...")
-        texts = [record_to_text(record) for record in pending]
-        all_embeddings: list[list[float] | None] = []
+        print(f"📄 Embedding {len(pending)} records…")
 
-        for start in tqdm(range(0, len(texts), batch_size)):
-            batch = texts[start:start + batch_size]
-            embeddings = await embed_batch(batch, client=client)
-            all_embeddings.extend(embeddings)
-            await asyncio.sleep(0.1)
+        for record in tqdm(pending, desc="🧠 Embedding"):
+            text = record_to_text(record)
+            embedding = await embed_one(text, client=client)
 
-        for record, emb in zip(pending, all_embeddings):
-            record["embedded"] = emb is not None
-            record["embedding"] = emb
+            record["embedded"] = embedding is not None
+            record["embedding"] = embedding
 
         state["needs_index_rebuild"] = True
 
-    if state.get("needs_index_rebuild"):
-        embedded_records = [r for r in records if r.get("embedded")]
-        if not embedded_records:
-            print("\n⚠️ No embedded records available; skipping index rebuild.")
-        else:
-            embedding_matrix = np.array([r.get("embedding") for r in embedded_records],
-                                        dtype="float32")
-            index = faiss.IndexFlatL2(embedding_matrix.shape[1])
-            index.add(embedding_matrix)
+    # -----------------------------------------------------------------
+    # FAISS rebuild (only when needed)
+    # -----------------------------------------------------------------
 
-            # Persist metadata for downstream consumers
-            with open(json_path, "w", encoding="utf-8") as f:
-                json.dump([{
-                    k: v
-                    for k, v in record.items()
-                    if k not in {"embedded", "embedding", "source_hash"}
-                } for record in embedded_records], f, ensure_ascii=False, indent=2)
+    if state.get("needs_index_rebuild"):
+        embedded = [r for r in records if r.get("embedded")]
+
+        if not embedded:
+            print("⚠️ No embedded records — skipping index rebuild.")
+        else:
+            print("🔧 Rebuilding FAISS index…")
+
+            matrix = np.array(
+                [r["embedding"] for r in embedded],
+                dtype="float32",
+            )
+
+            index = faiss.IndexFlatL2(matrix.shape[1])
+            index.add(matrix)
 
             faiss.write_index(index, index_path)
-            np.save(embeddings_path, embedding_matrix)
+            np.save(embeddings_path, matrix)
+
+            # Persist clean enhanced snapshot (no embeddings)
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    [
+                        {
+                            k: v
+                            for k, v in r.items()
+                            if k not in {"embedded", "embedding", "source_hash"}
+                        }
+                        for r in embedded
+                    ],
+                    f,
+                    ensure_ascii=False,
+                    indent=2,
+                )
 
             state["needs_index_rebuild"] = False
-            print("\n✅ Rebuilt FAISS index and embeddings.")
+            print("✅ FAISS index rebuilt.")
+
     else:
-        print("\nℹ️ Skipping index rebuild (no changes detected).")
+        print("ℹ️ Index rebuild not required.")
 
     save_state(state, state_path)
-    print(f"State saved → {state_path}")
+    print(f"💾 State saved → {state_path}")
 
+
+# ---------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------
 
 async def main():
-    await embed_library()
+    """
+    Example:
+      python embeddings_pipeline.py data/*_None_59
+    """
+    import sys
+
+    if len(sys.argv) != 2:
+        raise SystemExit("Usage: python embeddings_pipeline.py <run_dir>")
+
+    await embed_library(sys.argv[1])
 
 
 if __name__ == "__main__":
