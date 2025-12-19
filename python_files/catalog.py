@@ -11,19 +11,18 @@ CONCURRENCY = 5
 
 searchText = "*"  # use "*" to get all results
 
-materialTypeIds = 33 # DVDs
+materialTypeIds = None # 33 # DVDs
 locationIds = 59 # WR
 
 searchTextFormat = searchText.replace(" ", "_")
 searchTextFormat = replace_with_utf8_hex(searchText) # replace invalid characters with utf8-hex
 
-directory_name = f"data/{searchTextFormat}_{materialTypeIds}_{locationIds}"
+
+directory_name = f"data/{str(searchTextFormat)}_{str(materialTypeIds)}_{str(locationIds)}"
 
 RESULTS_FILE = f"{directory_name}/wr.json"
 ENHANCED_FILE = f"{directory_name}/wr_enhanced.json"
 INFO_FILE = f"{directory_name}/info.json"
-
-# see payload below for more parameters
 
 ### Vega search results ###
 HEADERS = {
@@ -64,14 +63,17 @@ async def fetch_page(session, page_num, page_size, semaphore):
         "sorting": "title",
         "sortOrder": "asc",
         "searchType": "everything",
-        "universalLimiterIds": ["at_library"],  # available materials only
-        "locationIds": locationIds,  
-        "materialTypeIds": [materialTypeIds],  
+        "universalLimiterIds": ["at_library"],  # available materials only  
         "pageNum": page_num,
         "pageSize": page_size,
         "resourceType": "FormatGroup"
     }
 
+    if locationIds:
+        payload["locationIds"] = locationIds
+
+    if materialTypeIds: 
+        payload["materialTypeIds"]= materialTypeIds
 
 
     async with semaphore:
