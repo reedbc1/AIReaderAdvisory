@@ -115,8 +115,11 @@ async def load_catalog_snapshot() -> List[dict]:
     """Fetch the latest catalog snapshot and return parsed records."""
     await create_dir()
     await vega_search()
-    with open(RESULTS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(RESULTS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
 
 
 def _drop_runtime_fields(record: dict) -> dict:

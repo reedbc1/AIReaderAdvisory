@@ -9,18 +9,15 @@ BASE_SEARCH_URL = "https://na2.iiivega.com/api/search-result/search/format-group
 BASE_EDITION_URL = "https://na2.iiivega.com/api/search-result/editions"
 CONCURRENCY = 5
 
-searchText = "stranger things"  # use "*" to get all results
+searchText = "*"  # use "*" to get all results
 
-materialTypeIds = "33" # DVDs
-locationIds = "59" # WR
+materialTypeIds = 33 # DVDs
+locationIds = 59 # WR
 
 searchTextFormat = searchText.replace(" ", "_")
 searchTextFormat = replace_with_utf8_hex(searchText) # replace invalid characters with utf8-hex
 
-materialTypeIdsFormat = materialTypeIds.replace(" ", "").replace(",", ".")
-locationIdsFormat = locationIds.replace(" ", "").replace(",", ".")
-
-directory_name = f"data/{searchTextFormat}_{materialTypeIdsFormat}_{locationIdsFormat}"
+directory_name = f"data/{searchTextFormat}_{materialTypeIds}_{locationIds}"
 
 RESULTS_FILE = f"{directory_name}/wr.json"
 ENHANCED_FILE = f"{directory_name}/wr_enhanced.json"
@@ -64,16 +61,18 @@ async def create_dir(directory_name = directory_name):
 async def fetch_page(session, page_num, page_size, semaphore):
     payload = {
         "searchText": f"{searchText}",
-        "sorting": "relevance",
+        "sorting": "title",
         "sortOrder": "asc",
         "searchType": "everything",
         "universalLimiterIds": ["at_library"],  # available materials only
-        "locationIds": [locationIds],  
+        "locationIds": locationIds,  
         "materialTypeIds": [materialTypeIds],  
         "pageNum": page_num,
         "pageSize": page_size,
         "resourceType": "FormatGroup"
     }
+
+
 
     async with semaphore:
         async with session.post(BASE_SEARCH_URL, json=payload) as resp:
