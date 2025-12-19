@@ -14,26 +14,13 @@ Design goals:
 from __future__ import annotations
 
 import json
-import os
-from functools import lru_cache
 from typing import Any, Dict, List, Tuple
 
 import faiss
 import numpy as np
-from dotenv import load_dotenv
-from openai import OpenAI
 
 from choose_dir import prompt_for_subdirectory
-
-
-# ---------------------------------------------------------------------
-# OpenAI client
-# ---------------------------------------------------------------------
-
-@lru_cache(maxsize=1)
-def get_client() -> OpenAI:
-    load_dotenv()
-    return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+from gemini_client import embed_text, get_chat_model
 
 
 # ---------------------------------------------------------------------
@@ -72,19 +59,12 @@ def search_library(
     *,
     index: faiss.Index,
     records: List[Dict[str, Any]],
-    client: OpenAI,
     k: int = 50
 ) -> List[Dict[str, Any]]:
 
     # Embed the raw user query only
-    emb = client.embeddings.create(
-        model="text-embedding-3-small",
-        input=query
-    )
-
-    query_vec = normalize(
-        np.array(emb.data[0].embedding, dtype="float32")
-    ).reshape(1, -1)
+    emb = embed_text(query)
+    query_vec = normalize(np.array(emb, dtype="float32")).reshape(1, -1)
 
     distances, indices = index.search(query_vec, min(k, index.ntotal))
 
@@ -138,43 +118,42 @@ def prefilter_results(
 
 def explain_results(
     *,
-    client: OpenAI,
     patron_query: str,
     candidates: List[Dict[str, Any]]
 ) -> str:
 
-    response = client.responses.create(
-        model="gpt-4o",
-        max_output_tokens=350,
-        input=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a professional librarian providing concise reader's advisory.\n\n"
-                    "Rules:\n"
-                    "- Review the candidate items provided\n"
-                    "- Select the best matches for the patron request\n"
-                    "- Recommend at most 5 items\n"
-                    "- Use bullet points\n"
-                    "- No more than 2 sentences per item\n"
-                    "- Use ONLY the provided items\n"
-                    "- Do NOT invent books\n"
-                    "- Prefer thematic and tonal similarity over exact word matches\n"
-                    "- If none fit well, say so"
-                )
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Patron request:\n{patron_query}\n\n"
-                    "Candidate items from the library catalog:\n"
-                    + json.dumps(candidates, indent=2)
-                )
-            }
-        ]
+    system_prompt = (
+        "You are a professional librarian providing concise reader's advisory.\n\n"
+        "Rules:\n"
+        "- Review the candidate items provided\n"
+        "- Select the best matches for the patron request\n"
+        "- Recommend at most 5 items\n"
+        "- Use bullet points\n"
+        "- No more than 2 sentences per item\n"
+        "- Use ONLY the provided items\n"
+        "- Do NOT invent books\n"
+        "- Prefer thematic and tonal similarity over exact word matches\n"
+        "- If none fit well, say so"
     )
 
-    return response.output_text.strip()
+    model = get_chat_model(system_prompt)
+    response = model.generate_content(
+        [
+            {
+                "role": "user",
+                "parts": [
+                    (
+                        f"Patron request:\n{patron_query}\n\n"
+                        "Candidate items from the library catalog:\n"
+                        + json.dumps(candidates, indent=2)
+                    )
+                ],
+            }
+        ],
+        generation_config={"max_output_tokens": 350},
+    )
+
+    return response.text.strip()
 
 
 # ---------------------------------------------------------------------
@@ -182,7 +161,6 @@ def explain_results(
 # ---------------------------------------------------------------------
 
 def run_conversation_loop() -> None:
-    client = get_client()
     index, records, _ = load_library()
 
     print("\n📚 Reader's Advisory Agent (pure semantic similarity)")
@@ -197,8 +175,7 @@ def run_conversation_loop() -> None:
         raw_results = search_library(
             query=query,
             index=index,
-            records=records,
-            client=client
+            records=records
         )
 
         if not raw_results:
@@ -209,7 +186,6 @@ def run_conversation_loop() -> None:
 
         print("📖 Reviewing results...\n")
         answer = explain_results(
-            client=client,
             patron_query=query,
             candidates=candidates
         )

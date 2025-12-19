@@ -3,24 +3,15 @@
 import asyncio
 import json
 import os
-from functools import lru_cache
 from typing import Iterable, List
 
 import faiss
 import numpy as np
-from dotenv import load_dotenv
-from openai import AsyncOpenAI
 from tqdm import tqdm
 
 from choose_dir import prompt_for_subdirectory
+from gemini_client import embed_text
 from stateful_pipeline import STATE_FILE, load_state, save_state
-
-
-@lru_cache(maxsize=1)
-def get_client() -> AsyncOpenAI:
-    """Lazily load environment variables and return the OpenAI client."""
-    load_dotenv()
-    return AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 def record_to_text(record: dict) -> str:
@@ -40,18 +31,13 @@ def record_to_text(record: dict) -> str:
 async def embed_batch(
         batch: Iterable[str],
         *,
-        retries: int = 5,
-        pause_seconds: float = 0.1,
-        client: AsyncOpenAI | None = None) -> List[List[float] | None]:
+        retries: int = 5) -> List[List[float] | None]:
     """Embed a batch of texts with exponential backoff."""
-    client = client or get_client()
     batch_list = list(batch)
 
     for attempt in range(retries):
         try:
-            response = await client.embeddings.create(
-                model="text-embedding-3-small", input=batch_list)
-            return [item.embedding for item in response.data]
+            return [embed_text(text) for text in batch_list]
         except Exception as exc:
             wait_time = 2**attempt
             print(f"Error: {exc} — retrying in {wait_time}s...")
@@ -61,9 +47,8 @@ async def embed_batch(
     return [None] * len(batch_list)
 
 
-async def embed_library(client: AsyncOpenAI | None = None):
+async def embed_library():
     """Embed new/changed items and rebuild the FAISS index when required."""
-    client = client or get_client()
     batch_size = 100
 
     print("\n📁 Choose dataset folder:")
@@ -96,7 +81,7 @@ async def embed_library(client: AsyncOpenAI | None = None):
 
         for start in tqdm(range(0, len(texts), batch_size)):
             batch = texts[start:start + batch_size]
-            embeddings = await embed_batch(batch, client=client)
+            embeddings = await embed_batch(batch)
             all_embeddings.extend(embeddings)
             await asyncio.sleep(0.1)
 

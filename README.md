@@ -1,11 +1,11 @@
 # AIReaderAdvisory
 ## Description
-Uses OpenAI to provide reader's advisory within a specific library.
+Uses Gemini to provide reader's advisory within a specific library.
 
 ## What Files Do
 - catalog.py: retrieves library records from Vega catalog
 - embeddings.py: creates embeddings for library records
-- conversation.py: creates conversation with OpenAI API, retrieves library records based on query
+- conversation.py: creates conversation with the Gemini API, retrieves library records based on query
 - pipeline.py: integrates all three
 
 ## Running the Program
@@ -19,4 +19,5 @@ Uses OpenAI to provide reader's advisory within a specific library.
   - python3 pipeline.py --fetch --embed --chat
 - Use the --help tag to also see these descriptions in the shell.
 
-
+## Configuration
+- Set the `GEMINI_API_KEY` environment variable for embeddings and chat.

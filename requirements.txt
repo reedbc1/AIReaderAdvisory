@@ -1,4 +1,4 @@
-openai
+google-generativeai
 dotenv
 python-dotenv
 requests
