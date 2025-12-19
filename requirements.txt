@@ -9,3 +9,5 @@ tiktoken
 faiss-cpu
 tqdm
 numpy
+fastapi
+uvicorn

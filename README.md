@@ -19,4 +19,8 @@ Uses OpenAI to provide reader's advisory within a specific library.
   - python3 pipeline.py --fetch --embed --chat
 - Use the --help tag to also see these descriptions in the shell.
 
+## Web service
+- Set `RECOMMENDER_DATA_DIR` (or `DATASET_DIR`) to point to a folder containing `library.index`, `wr_enhanced.json`, and `library_embeddings.npy`.
+- Start the FastAPI server: `uvicorn backend.app:app --reload`
+- Open the UI at `http://localhost:8000/` (served from `static/index.html`)
 
