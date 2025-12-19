@@ -1,4 +1,4 @@
-"""Interactive conversation loop for the WR recommendation agent."""
+"""Interactive FAISS search loop for library records."""
 
 import json
 import os
@@ -51,25 +51,21 @@ def search_library(
     *,
     index: faiss.Index,
     records: list[dict],
-    client: OpenAI
+    client: OpenAI,
 ) -> List[Dict[str, Any]]:
+    """Embed the query, search FAISS, and return the top matches."""
 
-    # creates embeddings for query
-    emb = client.embeddings.create(
+    embedding = client.embeddings.create(
         model="text-embedding-3-small",
         input=query
     )
 
-    # reshape query array
     query_vec = np.array(
-        emb.data[0].embedding,
+        embedding.data[0].embedding,
         dtype="float32"
     ).reshape(1, -1)
 
-    # ensure k is an appropriate value
     k = max(1, min(k, index.ntotal))
-
-    # perform search on index
     distances, indices = index.search(query_vec, k)
 
     results = []
@@ -95,109 +91,71 @@ def search_library(
     return results
 
 
-# ---------------------------------------------------------------------
-# Conversation helpers
-# ---------------------------------------------------------------------
+def format_result(result: Dict[str, Any], rank: int) -> str:
+    """Pretty-print a single search result."""
 
-def create_conversation(client: OpenAI) -> str:
-    conv = client.conversations.create()
-    return conv.id
+    lines = [f"{rank}. {result.get('title') or 'Untitled'}"]
+
+    author = result.get("author")
+    if author:
+        lines.append(f"   Author: {author}")
+
+    material = result.get("material")
+    if material:
+        lines.append(f"   Material: {material}")
+
+    year = result.get("year")
+    if year:
+        lines.append(f"   Publication Date: {year}")
+
+    contributors = result.get("contributors")
+    if contributors:
+        lines.append(f"   Contributors: {contributors}")
+
+    subjects = result.get("subjects")
+    if subjects:
+        lines.append(f"   Subjects: {subjects}")
+
+    summary = result.get("summary")
+    if summary:
+        lines.append(f"   Summary: {summary}")
+
+    lines.append(f"   Distance: {result.get('distance'):.4f}")
+    return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------
-# Main loop
-# ---------------------------------------------------------------------
+def run_search_loop():
+    """Prompt for queries and print the 100 closest matches from FAISS."""
 
-def run_conversation_loop():
     client = get_client()
     index, records = load_library()
-    conv_id = create_conversation(client)
 
     while True:
         query = input("Enter query (or 'exit'): ").strip()
         if query.lower() == "exit":
             break
+        if not query:
+            print("Please enter a search query.\n")
+            continue
 
-        # -------------------------------------------------------------
-        # STAGE 1: Query refinement (NO web search)
-        # -------------------------------------------------------------
+        print("Searching library...\n")
 
-        print("Analyzing query...")
-
-        planning = client.responses.create(
-            model="gpt-5",
-            input=[{
-                "role": "system",
-                "content": (
-                    "Rewrite the user's request into the best possible "
-                    "library catalog search query. "
-                    "Do NOT add outside knowledge. "
-                    "Return a refined query."
-                )
-            }, {
-                "role": "user",
-                "content": query
-            }],
-            conversation=conv_id
-        )
-
-        refined_query = planning.output_text.strip()
-
-        print("refined_query")
-
-        # -------------------------------------------------------------
-        # STAGE 2: 🔒 FORCED library lookup
-        # -------------------------------------------------------------
-
-        print("Searching library...")
-        
-        library_results = search_library(
-            query=refined_query,
-            k=20,
+        results = search_library(
+            query=query,
+            k=100,
             index=index,
             records=records,
-            client=client
+            client=client,
         )
 
-        client.conversations.items.create(
-            conv_id,
-            items=[{
-                "type": "message",
-                "role": "system",
-                "content": [{
-                    "type": "input_text",
-                    "text": (
-                        "LIBRARY SEARCH RESULTS (authoritative, must be used):\n\n"
-                        + json.dumps(library_results, indent=2)
-                    )
-                }]
-            }]
-        )
+        if not results:
+            print("No results found.\n")
+            continue
 
-        # -------------------------------------------------------------
-        # STAGE 3: Grounded final response / follow-up
-        # -------------------------------------------------------------
-
-        print("Analyzing results...")
-        
-        final = client.responses.create(
-            model="gpt-5",
-            input=[{
-                "role": "system",
-                "content": (
-                    "Choose the library items that most closely match the request. "
-                    "Explain how they match. "
-                    "You MUST use ONLY the provided library results. "
-                    "If nothing matches, say so. "
-                    "If clarification is needed, ask a follow-up question."
-                )
-            }],
-            conversation=conv_id
-        )
-
-        print(final.output_text)
-        print("-" * 60)
+        for idx, result in enumerate(results, start=1):
+            print(format_result(result, idx))
+            print()
 
 
 if __name__ == "__main__":
-    run_conversation_loop()
+    run_search_loop()

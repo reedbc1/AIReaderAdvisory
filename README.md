@@ -1,12 +1,12 @@
 # AIReaderAdvisory
 ## Description
-Uses OpenAI to provide reader's advisory within a specific library.
+Uses OpenAI embeddings and FAISS to search library items within a specific library.
 
 ## What Files Do
 - catalog.py: retrieves library records from Vega catalog
 - embeddings.py: creates embeddings for library records
-- conversation.py: creates conversation with OpenAI API, retrieves library records based on query
-- pipeline.py: integrates all three
+- conversation.py: FAISS-powered search loop that returns the top 100 most similar items
+- pipeline.py: integrates all three and exposes the search loop
 
 ## Running the Program
 - The program is ran by calling pipeline.py
@@ -14,9 +14,8 @@ Uses OpenAI to provide reader's advisory within a specific library.
 - Arguments:
   - --fetch "Fetch data from Vega and enrich editions"
   - --embed "Generate embeddings and FAISS index"
-  - --chat "Start the interactive chat loop"
+  - --search "Start the interactive FAISS search loop"
 - For example, the following command does all three:
-  - python3 pipeline.py --fetch --embed --chat
+  - python3 pipeline.py --fetch --embed --search
 - Use the --help tag to also see these descriptions in the shell.
-
 
