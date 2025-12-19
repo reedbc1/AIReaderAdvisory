@@ -1,9 +1,9 @@
-"""Unified entrypoint for Vega scraping, embedding creation, and FAISS search."""
+"""Unified entrypoint for Vega scraping, embedding creation, and chat."""
 
 import argparse
 import asyncio
 
-from conversation import run_search_loop
+from conversation import run_conversation_loop
 from embeddings import embed_library
 from stateful_pipeline import sync_catalog_state
 
@@ -18,17 +18,17 @@ async def run_async_steps(fetch, embed):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run Vega pipeline and FAISS search")
+    parser = argparse.ArgumentParser(description="Run Vega pipeline and chat assistant")
     parser.add_argument("--fetch", action="store_true", help="Fetch data from Vega and enrich editions")
     parser.add_argument("--embed", action="store_true", help="Generate embeddings and FAISS index")
-    parser.add_argument("--search", action="store_true", help="Start the interactive FAISS search loop")
+    parser.add_argument("--chat", action="store_true", help="Start the interactive chat loop")
     args = parser.parse_args()
 
     if args.fetch or args.embed:
         asyncio.run(run_async_steps(args.fetch, args.embed))
 
-    if args.search:
-        run_search_loop()
+    if args.chat:
+        run_conversation_loop()
 
 
 if __name__ == "__main__":
