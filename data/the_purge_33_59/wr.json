@@ -1,0 +1,51 @@
+[
+{
+  "id": "b27b466d-2ea6-5432-ac79-a91a9f219d0e",
+  "title": "The first purge",
+  "publicationDate": "2018",
+  "author": null,
+  "materials": [
+    {
+      "name": "Blu-ray",
+      "type": "physical",
+      "callNumber": "Blu-ray",
+      "editions": [
+        {
+          "id": "a83bcb85-a4cb-11ec-b9ab-afd7248d35e0",
+          "publicationDate": "2018"
+        }
+      ]
+    },
+    {
+      "name": "DVD",
+      "type": "physical",
+      "callNumber": "DVD First",
+      "editions": [
+        {
+          "id": "b948591c-a4cd-11ec-b9ab-b1628fa8a089",
+          "publicationDate": "2018"
+        }
+      ]
+    }
+  ]
+},
+{
+  "id": "c34141b3-6252-516d-91d3-84e4a56a805e",
+  "title": "The Borgias. The final season",
+  "publicationDate": "2018",
+  "author": null,
+  "materials": [
+    {
+      "name": "DVD",
+      "type": "physical",
+      "callNumber": "DVD Borgias",
+      "editions": [
+        {
+          "id": "6f91588c-a4cd-11ec-b9ab-3b16242ad916",
+          "publicationDate": "2018"
+        }
+      ]
+    }
+  ]
+}
+]

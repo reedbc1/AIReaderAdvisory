@@ -1,0 +1,168 @@
+[
+{
+  "id": "7a7c3b32-4432-548f-968b-96a2a9d8f24b",
+  "title": "Plus one at an Amish wedding",
+  "publicationDate": "2022-2024",
+  "author": null,
+  "materials": [
+    {
+      "name": "DVD",
+      "type": "physical",
+      "callNumber": "DVD Plus",
+      "editions": [
+        {
+          "id": "dcaba8ee-cc88-11ee-b026-2bd840f2526a",
+          "publicationDate": "2024"
+        }
+      ]
+    },
+    {
+      "name": "Streaming Video",
+      "type": "electronic",
+      "callNumber": null,
+      "editions": [
+        {
+          "id": "1ebe9ee2-f8b6-11ef-b4d8-a16b67487c10",
+          "publicationDate": "2022"
+        }
+      ]
+    }
+  ]
+},
+{
+  "id": "bd6a870a-f8bd-5373-aaea-83f9b3567527",
+  "title": "In flight",
+  "publicationDate": "2024",
+  "author": null,
+  "materials": [
+    {
+      "name": "DVD",
+      "type": "physical",
+      "callNumber": "DVD  In",
+      "editions": [
+        {
+          "id": "0c30dbde-a30f-11ef-9532-5fb880988165",
+          "publicationDate": "2024"
+        }
+      ]
+    },
+    {
+      "name": "Streaming Video",
+      "type": "electronic",
+      "callNumber": null,
+      "editions": [
+        {
+          "id": "206c4f48-f8b6-11ef-b4d8-171704c2cd81",
+          "publicationDate": "2024"
+        }
+      ]
+    }
+  ]
+},
+{
+  "id": "3c61ad88-00d6-56fb-9355-54505dec22ba",
+  "title": "The Watchers",
+  "publicationDate": "2024",
+  "author": null,
+  "materials": [
+    {
+      "name": "Blu-ray",
+      "type": "physical",
+      "callNumber": "BLU-RAY  Watchers",
+      "editions": [
+        {
+          "id": "5f8f0a37-3830-11ef-a374-e937b7ddd756",
+          "publicationDate": "2024"
+        }
+      ]
+    },
+    {
+      "name": "DVD",
+      "type": "physical",
+      "callNumber": "DVD Watchers",
+      "editions": [
+        {
+          "id": "5f765207-3830-11ef-a374-0fae65f23b0a",
+          "publicationDate": "2024"
+        }
+      ]
+    }
+  ]
+},
+{
+  "id": "a63d0309-3f1e-5ce5-85d1-e88ad4bc97ff",
+  "title": "Jules",
+  "publicationDate": "2023",
+  "author": null,
+  "materials": [
+    {
+      "name": "DVD",
+      "type": "physical",
+      "callNumber": "DVD Jules",
+      "editions": [
+        {
+          "id": "4c0310ca-494e-11ee-bb51-cb205a965bdb",
+          "publicationDate": "2023"
+        }
+      ]
+    }
+  ]
+},
+{
+  "id": "aaf027a0-b0c5-598f-b93e-2513765abd83",
+  "title": "The last thing Mary saw",
+  "publicationDate": "2022",
+  "author": null,
+  "materials": [
+    {
+      "name": "DVD",
+      "type": "physical",
+      "callNumber": "DVD Last",
+      "editions": [
+        {
+          "id": "fab314b5-d0de-11ec-983f-d97bcf5945b6",
+          "publicationDate": "2022"
+        }
+      ]
+    }
+  ]
+},
+{
+  "id": "250550fc-f47d-5150-a122-ada39623d4a9",
+  "title": "Criminal minds. The sixth season",
+  "publicationDate": "2011",
+  "author": null,
+  "materials": [
+    {
+      "name": "DVD",
+      "type": "physical",
+      "callNumber": "DVD Criminal",
+      "editions": [
+        {
+          "id": "1433b18b-a50e-11ec-89fe-ddfc84dd5957",
+          "publicationDate": "2011"
+        }
+      ]
+    }
+  ]
+},
+{
+  "id": "8e8b5e5e-8a80-53e0-8abd-6c20c7dfe868",
+  "title": "Fallen angel",
+  "publicationDate": "2009",
+  "author": null,
+  "materials": [
+    {
+      "name": "DVD",
+      "type": "physical",
+      "callNumber": "DVD Fallen",
+      "editions": [
+        {
+          "id": "b6312ec8-a4cd-11ec-b9ab-23870efcb755",
+          "publicationDate": "2009"
+        }
+      ]
+    }
+  ]
+}
+]
