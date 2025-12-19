@@ -142,7 +142,7 @@ def run_search_loop():
 
         results = search_library(
             query=query,
-            k=100,
+            k=10,
             index=index,
             records=records,
             client=client,
