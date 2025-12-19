@@ -205,7 +205,6 @@ async def fetch_edition(session, edition_id):
         return await response.json()
 
 
-# only take noteSummmary?
 def process_edition(edition, sep="."):
     data = edition.get("edition", {})
     extracted = {

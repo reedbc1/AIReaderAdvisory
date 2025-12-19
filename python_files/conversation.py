@@ -4,7 +4,9 @@ WR (Weber Road) Reader's Advisory recommendation agent.
 
 Design goals:
 - No conversational memory
-- No model-based ranking
+- FAISS controls retrieval
+- Pure semantic similarity (no lexical anchoring)
+- GPT synthesizes from candidate results
 - Minimal tokens
 - Fast response time
 """
@@ -15,7 +17,6 @@ import json
 import os
 from functools import lru_cache
 from typing import Any, Dict, List, Tuple
-from difflib import SequenceMatcher
 
 import faiss
 import numpy as np
@@ -44,40 +45,6 @@ def normalize(vec: np.ndarray) -> np.ndarray:
     return vec if norm == 0 else vec / norm
 
 
-def choose_weights(query: str) -> tuple[float, float]:
-    q = query.lower()
-
-    if "like" in q and len(q.split()) <= 5:
-        return 0.8, 0.2
-
-    if any(w in q for w in ["but", "with", "without", "more", "less", "scarier", "slower", "faster"]):
-        return 0.6, 0.4
-
-    return 0.7, 0.3
-
-
-def fuzzy_title_match(
-    query: str,
-    records: List[Dict[str, Any]],
-    threshold: float = 0.85
-) -> int | None:
-    q = query.lower()
-    best_score = 0.0
-    best_idx = None
-
-    for i, r in enumerate(records):
-        title = r.get("title")
-        if not title:
-            continue
-
-        score = SequenceMatcher(None, q, title.lower()).ratio()
-        if score > best_score:
-            best_score = score
-            best_idx = i
-
-    return best_idx if best_score >= threshold else None
-
-
 # ---------------------------------------------------------------------
 # Library loading
 # ---------------------------------------------------------------------
@@ -97,7 +64,7 @@ def load_library() -> Tuple[faiss.Index, List[Dict[str, Any]], np.ndarray]:
 
 
 # ---------------------------------------------------------------------
-# FAISS search with hybrid query vector
+# FAISS search (PURE semantic similarity)
 # ---------------------------------------------------------------------
 
 def search_library(
@@ -105,35 +72,21 @@ def search_library(
     *,
     index: faiss.Index,
     records: List[Dict[str, Any]],
-    embeddings: np.ndarray,
     client: OpenAI,
-    k: int = 20
-) -> tuple[List[Dict[str, Any]], bool]:
+    k: int = 50
+) -> List[Dict[str, Any]]:
 
-    # Always embed query text
-    text_emb = client.embeddings.create(
+    # Embed the raw user query only
+    emb = client.embeddings.create(
         model="text-embedding-3-small",
         input=query
     )
-    text_vec = normalize(
-        np.array(text_emb.data[0].embedding, dtype="float32")
-    )
 
-    match_idx = fuzzy_title_match(query, records)
-    item_weight, text_weight = choose_weights(query)
+    query_vec = normalize(
+        np.array(emb.data[0].embedding, dtype="float32")
+    ).reshape(1, -1)
 
-    if match_idx is not None:
-        item_vec = normalize(embeddings[match_idx])
-        query_vec = normalize(
-            item_weight * item_vec + text_weight * text_vec
-        ).reshape(1, -1)
-        exact_item_found = True
-    else:
-        query_vec = text_vec.reshape(1, -1)
-        exact_item_found = False
-
-    k = max(1, min(k, index.ntotal))
-    distances, indices = index.search(query_vec, k)
+    distances, indices = index.search(query_vec, min(k, index.ntotal))
 
     results: List[Dict[str, Any]] = []
 
@@ -155,16 +108,16 @@ def search_library(
             "distance": float(dist),
         })
 
-    return results, exact_item_found
+    return results
 
 
 # ---------------------------------------------------------------------
-# Python-side ranking
+# Python-side pre-filtering (NOT final selection)
 # ---------------------------------------------------------------------
 
-def rank_results(
+def prefilter_results(
     results: List[Dict[str, Any]],
-    top_n: int = 4
+    max_items: int = 15
 ) -> List[Dict[str, Any]]:
 
     ranked = sorted(results, key=lambda r: r["distance"])
@@ -176,52 +129,46 @@ def rank_results(
         )
 
     ranked = sorted(ranked, key=lambda r: r["score"], reverse=True)
-    return ranked[:top_n]
+    return ranked[:max_items]
 
 
 # ---------------------------------------------------------------------
-# LLM explanation
+# LLM synthesis (GPT reads FAISS results)
 # ---------------------------------------------------------------------
 
 def explain_results(
     *,
     client: OpenAI,
     patron_query: str,
-    results: List[Dict[str, Any]],
-    exact_item_found: bool
+    candidates: List[Dict[str, Any]]
 ) -> str:
 
-    warning = ""
-    if not exact_item_found:
-        warning = (
-            "⚠️ **Exact item not found in the catalog.** "
-            "Recommendations are based on similar themes and descriptions.\n\n"
-        )
-
     response = client.responses.create(
-        model="gpt-4o-mini",
-        max_output_tokens=300,
+        model="gpt-4o",
+        max_output_tokens=350,
         input=[
             {
                 "role": "system",
                 "content": (
-                    "You are a professional librarian providing concise "
-                    "reader's advisory recommendations.\n\n"
+                    "You are a professional librarian providing concise reader's advisory.\n\n"
                     "Rules:\n"
+                    "- Review the candidate items provided\n"
+                    "- Select the best matches for the patron request\n"
+                    "- Recommend at most 5 items\n"
                     "- Use bullet points\n"
-                    "- Recommend at most 4 items\n"
                     "- No more than 2 sentences per item\n"
+                    "- Use ONLY the provided items\n"
                     "- Do NOT invent books\n"
-                    "- Base explanations only on the provided data"
+                    "- Prefer thematic and tonal similarity over exact word matches\n"
+                    "- If none fit well, say so"
                 )
             },
             {
                 "role": "user",
                 "content": (
-                    warning +
                     f"Patron request:\n{patron_query}\n\n"
-                    "Recommended items:\n"
-                    + json.dumps(results, indent=2)
+                    "Candidate items from the library catalog:\n"
+                    + json.dumps(candidates, indent=2)
                 )
             }
         ]
@@ -236,9 +183,9 @@ def explain_results(
 
 def run_conversation_loop() -> None:
     client = get_client()
-    index, records, embeddings = load_library()
+    index, records, _ = load_library()
 
-    print("\n📚 Reader's Advisory Agent (fast mode)")
+    print("\n📚 Reader's Advisory Agent (pure semantic similarity)")
     print("Type 'exit' to quit.\n")
 
     while True:
@@ -247,27 +194,24 @@ def run_conversation_loop() -> None:
             break
 
         print("\n🔍 Searching catalog...")
-        raw_results, exact_item_found = search_library(
+        raw_results = search_library(
             query=query,
             index=index,
             records=records,
-            embeddings=embeddings,
-            client=client,
-            k=20
+            client=client
         )
 
         if not raw_results:
             print("\n❌ No results found.\n")
             continue
 
-        top_results = rank_results(raw_results, top_n=4)
+        candidates = prefilter_results(raw_results, max_items=15)
 
-        print("📖 Preparing recommendations...\n")
+        print("📖 Reviewing results...\n")
         answer = explain_results(
             client=client,
             patron_query=query,
-            results=top_results,
-            exact_item_found=exact_item_found
+            candidates=candidates
         )
 
         print(answer)
