@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from threading import Lock
 from typing import Any, Dict, List, Tuple
 
 import faiss
@@ -39,8 +40,11 @@ def get_client() -> OpenAI:
 DEFAULT_BASE_DATA_DIR = "data"
 DATASET_ENV_VARS = ("RECOMMENDER_DATA_DIR", "DATASET_DIR")
 
-_library_cache: Tuple[faiss.Index, List[Dict[str, Any]], np.ndarray] | None = None
+LibraryResources = Tuple[faiss.Index, List[Dict[str, Any]], np.ndarray]
+
+_library_cache: LibraryResources | None = None
 _library_path: str | None = None
+_library_lock = Lock()
 
 
 def _normalize(vec: np.ndarray) -> np.ndarray:
@@ -81,7 +85,7 @@ def get_library(
     directory: str | None = None,
     *,
     allow_prompt: bool = False,
-) -> Tuple[faiss.Index, List[Dict[str, Any]], np.ndarray]:
+) -> LibraryResources:
     """Load (or reuse) the FAISS index, catalog metadata, and embeddings."""
     global _library_cache, _library_path
 
@@ -89,26 +93,31 @@ def get_library(
     if _library_cache is not None and _library_path == resolved_dir:
         return _library_cache
 
-    index_path = Path(resolved_dir) / "library.index"
-    catalog_path = Path(resolved_dir) / "wr_enhanced.json"
-    embeddings_path = Path(resolved_dir) / "library_embeddings.npy"
+    with _library_lock:
+        if _library_cache is not None and _library_path == resolved_dir:
+            return _library_cache
 
-    if not index_path.exists() or not catalog_path.exists() or not embeddings_path.exists():
-        raise FileNotFoundError(
-            f"Missing required data files in {resolved_dir}. Expected "
-            f"'library.index', 'wr_enhanced.json', and 'library_embeddings.npy'."
-        )
+        index_path = Path(resolved_dir) / "library.index"
+        catalog_path = Path(resolved_dir) / "wr_enhanced.json"
+        embeddings_path = Path(resolved_dir) / "library_embeddings.npy"
 
-    index = faiss.read_index(str(index_path))
+        if not index_path.exists() or not catalog_path.exists() or not embeddings_path.exists():
+            raise FileNotFoundError(
+                f"Missing required data files in {resolved_dir}. Expected "
+                f"'library.index', 'wr_enhanced.json', and 'library_embeddings.npy'."
+            )
 
-    with catalog_path.open(encoding="utf-8") as f:
-        records = json.load(f)
+        index = faiss.read_index(str(index_path))
 
-    embeddings = np.load(str(embeddings_path))
-    assert len(records) == embeddings.shape[0], "❌ Index / JSON mismatch"
+        with catalog_path.open(encoding="utf-8") as f:
+            records = json.load(f)
 
-    _library_cache = (index, records, embeddings)
-    _library_path = resolved_dir
+        embeddings = np.load(str(embeddings_path))
+        assert len(records) == embeddings.shape[0], "❌ Index / JSON mismatch"
+
+        _library_cache = (index, records, embeddings)
+        _library_path = resolved_dir
+
     return _library_cache
 
 
@@ -206,14 +215,19 @@ def explain_results(
     return response.output_text.strip()
 
 
-def recommend(query: str, *, directory: str | None = None) -> str:
+def recommend(
+    query: str,
+    *,
+    directory: str | None = None,
+    library: LibraryResources | None = None,
+) -> str:
     """Public entrypoint: perform a single recommendation request."""
     cleaned = (query or "").strip()
     if not cleaned:
         raise ValueError("Query must not be empty.")
 
     client = get_client()
-    index, records, _ = get_library(directory, allow_prompt=False)
+    index, records, _ = library or get_library(directory, allow_prompt=False)
 
     raw_results = search_library(query=cleaned, index=index, records=records, client=client)
     if not raw_results:
