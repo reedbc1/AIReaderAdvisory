@@ -29,6 +29,8 @@ assert len(data) == embeddings.shape[
 
 # 1. Define a list of callable tools for the model
 tools = [{
+    "type": "web_search"
+}, {
     "type": "function",
     "name": "search_library",
     "description":
@@ -109,14 +111,11 @@ while True:
 
     input_messages = [{"role": "user", "content": f"{query}"}]
 
-    instructions = "respond only with output from the tool."
-
     # 2. Prompt the model with tools defined
     logger.info("getting parameters...")
     response = client.responses.create(model="gpt-5",
                                        tools=tools,
                                        input=input_messages,
-                                       instructions=instructions,
                                        conversation=conv_id)
 
     for tool_call in response.output:

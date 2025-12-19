@@ -1,5 +1,3 @@
-# purpose: retrieve records from vega
-
 import aiohttp
 import asyncio
 import json
