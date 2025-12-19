@@ -1,4 +1,15 @@
-"""Interactive conversation loop for the WR recommendation agent."""
+"""
+Fast, stateless interactive conversation loop for the
+WR (Weber Road) Reader's Advisory recommendation agent.
+
+Design goals:
+- No conversational memory
+- No model-based ranking
+- Minimal tokens
+- Fast response time
+"""
+
+from __future__ import annotations
 
 import json
 import os
@@ -14,7 +25,7 @@ from choose_dir import prompt_for_subdirectory
 
 
 # ---------------------------------------------------------------------
-# Client
+# OpenAI client
 # ---------------------------------------------------------------------
 
 @lru_cache(maxsize=1)
@@ -24,11 +35,10 @@ def get_client() -> OpenAI:
 
 
 # ---------------------------------------------------------------------
-# Library loading + search
+# Library loading
 # ---------------------------------------------------------------------
 
-# return index, records
-def load_library() -> Tuple[faiss.Index, list[dict]]:
+def load_library() -> Tuple[faiss.Index, List[Dict[str, Any]]]:
     directory = prompt_for_subdirectory()
 
     index_path = f"{directory}/library.index"
@@ -36,6 +46,7 @@ def load_library() -> Tuple[faiss.Index, list[dict]]:
     embeddings_path = f"{directory}/library_embeddings.npy"
 
     index = faiss.read_index(index_path)
+
     with open(json_path, encoding="utf-8") as f:
         records = json.load(f)
 
@@ -45,34 +56,34 @@ def load_library() -> Tuple[faiss.Index, list[dict]]:
     return index, records
 
 
+# ---------------------------------------------------------------------
+# FAISS search
+# ---------------------------------------------------------------------
+
 def search_library(
     query: str,
-    k: int,
     *,
     index: faiss.Index,
-    records: list[dict],
-    client: OpenAI
+    records: List[Dict[str, Any]],
+    client: OpenAI,
+    k: int = 20
 ) -> List[Dict[str, Any]]:
 
-    # creates embeddings for query
     emb = client.embeddings.create(
         model="text-embedding-3-small",
         input=query
     )
 
-    # reshape query array
     query_vec = np.array(
         emb.data[0].embedding,
         dtype="float32"
     ).reshape(1, -1)
 
-    # ensure k is an appropriate value
     k = max(1, min(k, index.ntotal))
-
-    # perform search on index
     distances, indices = index.search(query_vec, k)
 
-    results = []
+    results: List[Dict[str, Any]] = []
+
     for dist, idx in zip(distances[0], indices[0]):
         if idx < 0:
             continue
@@ -89,114 +100,116 @@ def search_library(
             "summary": record.get("summary"),
             "subjects": record.get("subjects"),
             "contributors": record.get("contributors"),
-            "distance": float(dist)
+            "distance": float(dist),
         })
 
     return results
 
 
 # ---------------------------------------------------------------------
-# Conversation helpers
+# Python-side ranking (CRITICAL FOR SPEED)
 # ---------------------------------------------------------------------
 
-def create_conversation(client: OpenAI) -> str:
-    conv = client.conversations.create()
-    return conv.id
+def rank_results(
+    results: List[Dict[str, Any]],
+    top_n: int = 4
+) -> List[Dict[str, Any]]:
+
+    # Base ranking: FAISS distance
+    ranked = sorted(results, key=lambda r: r["distance"])
+
+    # Lightweight heuristic scoring
+    for r in ranked:
+        r["score"] = (
+            (1 / (1 + r["distance"])) +
+            (0.1 if r.get("summary") else 0)
+        )
+
+    ranked = sorted(ranked, key=lambda r: r["score"], reverse=True)
+    return ranked[:top_n]
 
 
 # ---------------------------------------------------------------------
-# Main loop
+# LLM explanation (small, fast)
 # ---------------------------------------------------------------------
 
-def run_conversation_loop():
+def explain_results(
+    *,
+    client: OpenAI,
+    patron_query: str,
+    results: List[Dict[str, Any]]
+) -> str:
+
+    response = client.responses.create(
+        model="gpt-5",
+        input=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a professional librarian providing concise "
+                    "reader's advisory recommendations.\n\n"
+                    "Rules:\n"
+                    "- Use bullet points\n"
+                    "- Recommend at most  items\n"
+                    "- No more than 2 sentences per item\n"
+                    "- Do NOT invent books\n"
+                    "- Base explanations only on the provided data"
+                )
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Patron request:\n{patron_query}\n\n"
+                    "Selected library items (already ranked as best matches):\n"
+                    + json.dumps(results, indent=2)
+                )
+            }
+        ]
+    )
+
+    return response.output_text.strip()
+
+
+# ---------------------------------------------------------------------
+# Interactive loop
+# ---------------------------------------------------------------------
+
+def run_conversation_loop() -> None:
     client = get_client()
     index, records = load_library()
-    conv_id = create_conversation(client)
+
+    print("\n📚 Reader's Advisory Agent (fast mode)")
+    print("Type 'exit' to quit.\n")
 
     while True:
-        query = input("Enter query (or 'exit'): ").strip()
+        query = input("Patron request: ").strip()
         if query.lower() == "exit":
             break
 
-        # -------------------------------------------------------------
-        # STAGE 1: Query refinement (NO web search)
-        # -------------------------------------------------------------
-
-        print("Analyzing query...")
-
-        planning = client.responses.create(
-            model="gpt-5",
-            input=[{
-                "role": "system",
-                "content": (
-                    "Rewrite the user's request into the best possible "
-                    "library catalog search query. "
-                    "Do NOT add outside knowledge. "
-                    "Return a refined query."
-                )
-            }, {
-                "role": "user",
-                "content": query
-            }],
-            conversation=conv_id
-        )
-
-        refined_query = planning.output_text.strip()
-
-        print("refined_query")
-
-        # -------------------------------------------------------------
-        # STAGE 2: 🔒 FORCED library lookup
-        # -------------------------------------------------------------
-
-        print("Searching library...")
-        
-        library_results = search_library(
-            query=refined_query,
-            k=20,
+        print("\n🔍 Searching catalog...")
+        raw_results = search_library(
+            query=query,
             index=index,
             records=records,
-            client=client
+            client=client,
+            k=20
         )
 
-        client.conversations.items.create(
-            conv_id,
-            items=[{
-                "type": "message",
-                "role": "system",
-                "content": [{
-                    "type": "input_text",
-                    "text": (
-                        "LIBRARY SEARCH RESULTS (authoritative, must be used):\n\n"
-                        + json.dumps(library_results, indent=2)
-                    )
-                }]
-            }]
+        if not raw_results:
+            print("\n❌ No results found.\n")
+            continue
+
+        top_results = rank_results(raw_results, top_n=4)
+
+        print("📖 Preparing recommendations...\n")
+        answer = explain_results(
+            client=client,
+            patron_query=query,
+            results=top_results
         )
 
-        # -------------------------------------------------------------
-        # STAGE 3: Grounded final response / follow-up
-        # -------------------------------------------------------------
-
-        print("Analyzing results...")
-        
-        final = client.responses.create(
-            model="gpt-5",
-            input=[{
-                "role": "system",
-                "content": (
-                    "Choose the library items that most closely match the request. "
-                    "Explain how they match. "
-                    "You MUST use ONLY the provided library results. "
-                    "If nothing matches, say so. "
-                    "If clarification is needed, ask a follow-up question."
-                )
-            }],
-            conversation=conv_id
-        )
-
-        print(final.output_text)
-        print("-" * 60)
+        print(answer)
+        print("\n" + "-" * 60 + "\n")
 
 
 if __name__ == "__main__":
