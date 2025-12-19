@@ -8,8 +8,8 @@ from functools import lru_cache
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-EMBEDDING_MODEL = "text-embedding-004"
-CHAT_MODEL = "gemini-1.5-flash"
+CHAT_MODEL = "models/gemini-flash-latest"
+EMBEDDING_MODEL = "models/text-embedding-004"
 
 
 @lru_cache(maxsize=1)
@@ -23,17 +23,24 @@ def configure_genai() -> None:
     genai.configure(api_key=api_key)
 
 
-def embed_text(text: str) -> list[float]:
+def embed_text(text: str, *, task_type: str = "RETRIEVAL_QUERY") -> list[float]:
     """Embed a single string using the Gemini embedding model."""
     configure_genai()
-    response = genai.embed_content(model=EMBEDDING_MODEL, content=text)
+    response = genai.embed_content(
+        model=EMBEDDING_MODEL,
+        content=text,
+        task_type=task_type,
+    )
     return response["embedding"]
 
 
 @lru_cache(maxsize=1)
-def get_chat_model(system_instruction: str | None = None) -> genai.GenerativeModel:
+def get_chat_model(
+    system_instruction: str | None = None,
+) -> genai.GenerativeModel:
     """Return a cached GenerativeModel configured for reader's advisory."""
     configure_genai()
+
     if system_instruction is None:
         return genai.GenerativeModel(model_name=CHAT_MODEL)
 
@@ -41,4 +48,3 @@ def get_chat_model(system_instruction: str | None = None) -> genai.GenerativeMod
         model_name=CHAT_MODEL,
         system_instruction=system_instruction,
     )
-

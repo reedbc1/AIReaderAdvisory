@@ -116,6 +116,37 @@ def prefilter_results(
 # LLM synthesis (GPT reads FAISS results)
 # ---------------------------------------------------------------------
 
+def extract_gemini_text(response) -> str:
+    """
+    Safely extract text from a Gemini generate_content response.
+    Handles safety-blocked or empty responses without throwing.
+    """
+    if getattr(response, "candidates", None):
+        for candidate in response.candidates:
+            content = getattr(candidate, "content", None)
+            if not content or not getattr(content, "parts", None):
+                continue
+
+            texts = [
+                part.text
+                for part in content.parts
+                if hasattr(part, "text") and part.text
+            ]
+
+            if texts:
+                return "\n".join(texts).strip()
+
+    # Optional: inspect safety ratings during debugging
+    # for c in response.candidates or []:
+    #     print("Safety ratings:", getattr(c, "safety_ratings", None))
+
+    return (
+        "⚠️ I couldn’t generate a reader’s advisory for this request.\n"
+        "This may be due to content restrictions or weak matches.\n"
+        "You might try rephrasing or exploring a related theme."
+    )
+
+
 def explain_results(
     *,
     patron_query: str,
@@ -137,6 +168,7 @@ def explain_results(
     )
 
     model = get_chat_model(system_prompt)
+
     response = model.generate_content(
         [
             {
@@ -153,7 +185,8 @@ def explain_results(
         generation_config={"max_output_tokens": 350},
     )
 
-    return response.text.strip()
+    return extract_gemini_text(response)
+
 
 
 # ---------------------------------------------------------------------
