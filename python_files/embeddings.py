@@ -1,13 +1,10 @@
 """
-Embedding helpers for the WR dataset (canonical, stateful version).
+Embedding helpers for the WR dataset.
 
-Assumes directory layout created by the partitioned Vega ingestion pipeline:
-
-data/<RUN_ID>/
-├─ wr_enhanced.json        # canonical enriched snapshot
-├─ wr_state.json           # state file (records + needs_index_rebuild)
-├─ library.index           # FAISS index
-└─ library_embeddings.npy  # embedding matrix
+Assumes a run directory that contains:
+- wr_enhanced.json        # enriched snapshot (no embeddings)
+- library.index           # FAISS index (written by this module)
+- library_embeddings.npy  # embedding matrix (written by this module)
 """
 
 from __future__ import annotations
@@ -16,15 +13,14 @@ import asyncio
 import json
 import os
 from functools import lru_cache
-from typing import Iterable, List, Optional
+from pathlib import Path
+from typing import Optional
 
 import faiss
 import numpy as np
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from tqdm import tqdm
-
-from stateful_pipeline import STATE_FILE, load_state, save_state
 
 
 # ---------------------------------------------------------------------
@@ -88,87 +84,43 @@ async def embed_one(
 
 async def embed_library(run_dir: str) -> None:
     """
-    Embed new/changed records and rebuild FAISS index if required.
-
-    run_dir: e.g. data/*_None_59
+    Embed all records from wr_enhanced.json and rebuild the FAISS index.
     """
     client = get_client()
 
-    json_path = os.path.join(run_dir, "wr_enhanced.json")
-    index_path = os.path.join(run_dir, "library.index")
-    embeddings_path = os.path.join(run_dir, "library_embeddings.npy")
+    run_path = Path(run_dir)
+    json_path = run_path / "wr_enhanced.json"
+    index_path = run_path / "library.index"
+    embeddings_path = run_path / "library_embeddings.npy"
 
-    state_path = os.path.join(run_dir, os.path.basename(STATE_FILE))
-    state = load_state(state_path)
+    if not json_path.exists():
+        raise FileNotFoundError(f"Missing enriched snapshot: {json_path}")
 
-    records: list[dict] = state.get("records", [])
+    with open(json_path, "r", encoding="utf-8") as f:
+        records = json.load(f)
 
     if not records:
-        raise RuntimeError("State file contains no records — cannot embed.")
+        raise RuntimeError("No records found in wr_enhanced.json — cannot embed.")
 
-    pending = [r for r in records if not r.get("embedded")]
+    print(f"📄 Embedding {len(records)} records…")
+    matrix: list[list[float]] = []
 
-    if not pending:
-        print("ℹ️ No records require embedding.")
-    else:
-        print(f"📄 Embedding {len(pending)} records…")
+    for record in tqdm(records, desc="🧠 Embedding"):
+        text = record_to_text(record)
+        embedding = await embed_one(text, client=client)
+        if embedding is None:
+            raise RuntimeError("Embedding failed; aborting index build.")
+        matrix.append(embedding)
 
-        for record in tqdm(pending, desc="🧠 Embedding"):
-            text = record_to_text(record)
-            embedding = await embed_one(text, client=client)
+    matrix_np = np.array(matrix, dtype="float32")
+    index = faiss.IndexFlatL2(matrix_np.shape[1])
+    index.add(matrix_np)
 
-            record["embedded"] = embedding is not None
-            record["embedding"] = embedding
+    faiss.write_index(index, str(index_path))
+    np.save(embeddings_path, matrix_np)
 
-        state["needs_index_rebuild"] = True
-
-    # -----------------------------------------------------------------
-    # FAISS rebuild (only when needed)
-    # -----------------------------------------------------------------
-
-    if state.get("needs_index_rebuild"):
-        embedded = [r for r in records if r.get("embedded")]
-
-        if not embedded:
-            print("⚠️ No embedded records — skipping index rebuild.")
-        else:
-            print("🔧 Rebuilding FAISS index…")
-
-            matrix = np.array(
-                [r["embedding"] for r in embedded],
-                dtype="float32",
-            )
-
-            index = faiss.IndexFlatL2(matrix.shape[1])
-            index.add(matrix)
-
-            faiss.write_index(index, index_path)
-            np.save(embeddings_path, matrix)
-
-            # Persist clean enhanced snapshot (no embeddings)
-            with open(json_path, "w", encoding="utf-8") as f:
-                json.dump(
-                    [
-                        {
-                            k: v
-                            for k, v in r.items()
-                            if k not in {"embedded", "embedding", "source_hash"}
-                        }
-                        for r in embedded
-                    ],
-                    f,
-                    ensure_ascii=False,
-                    indent=2,
-                )
-
-            state["needs_index_rebuild"] = False
-            print("✅ FAISS index rebuilt.")
-
-    else:
-        print("ℹ️ Index rebuild not required.")
-
-    save_state(state, state_path)
-    print(f"💾 State saved → {state_path}")
+    print(f"✅ Saved {len(records)} embeddings to {embeddings_path}")
+    print(f"✅ FAISS index written to {index_path}")
 
 
 # ---------------------------------------------------------------------
@@ -178,7 +130,7 @@ async def embed_library(run_dir: str) -> None:
 async def main():
     """
     Example:
-      python embeddings_pipeline.py data/*_None_59
+      python embeddings.py data/current_run
     """
     import sys
 
