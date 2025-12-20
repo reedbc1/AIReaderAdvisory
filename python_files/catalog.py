@@ -1,32 +1,23 @@
 """
-Vega catalog search helpers (format-group level only).
+Lightweight helpers for fetching and enriching Vega catalog data.
 
 Responsibilities:
-- Query Vega format-group search endpoint
-- Partition-safe paging (avoid ES result window limits)
-- Parse raw catalog records
-- Write wr.json snapshots
-
-This module intentionally does NOT:
-- Fetch edition metadata
-- Enrich records
-- Manage state
-- Generate embeddings
+- Query Vega format-group search endpoint across partitions
+- Parse records into a minimal shape
+- Enrich records with edition metadata (subjects, summary, contributors)
+- Persist wr.json and wr_enhanced.json inside a run directory
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
-import os
 import random
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 import aiohttp
 from tqdm.asyncio import tqdm_asyncio
-
-from choose_dir import replace_with_utf8_hex
 
 # ---------------------------------------------------------------------
 # Vega endpoints
@@ -197,22 +188,16 @@ async def fetch_partition(
     *,
     session: aiohttp.ClientSession,
     partition_key: str,
-    out_dir: Path,
     location_ids: Optional[int] = DEFAULT_LOCATION_IDS,
     material_type_ids: Optional[int] = DEFAULT_MATERIAL_TYPE_IDS,
-) -> tuple[Path, int]:
+) -> tuple[list[dict], int]:
     """
-    Fetch one partition (e.g. 'A*') and write wr.json.
+    Fetch one partition (e.g. 'A*') and return parsed records.
 
     Returns:
-      (path_to_wr.json, total_results)
+      (records, total_results_reported_by_api)
     """
-    ensure_dir(out_dir)
 
-    results_file = out_dir / "wr.json"
-    info_file = out_dir / "info.json"
-
-    # First page for metadata
     payload = build_search_payload(
         partition_key=partition_key,
         page_num=0,
@@ -226,38 +211,14 @@ async def fetch_partition(
 
     total_pages = int(first_data.get("totalPages", 1))
     total_results = int(first_data.get("totalResults", 0))
-
     max_pages = min(total_pages, MAX_ES_PAGES)
 
-    with open(info_file, "w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "partition": partition_key,
-                "totalPages": total_pages,
-                "totalResults": total_results,
-                "maxPagesFetched": max_pages,
-            },
-            f,
-            indent=2,
-        )
+    records: list[dict] = []
 
-    with open(results_file, "w", encoding="utf-8") as f:
-        f.write("[\n")
+    def collect(data: dict) -> None:
+        records.extend(parse_format_group_records(data.get("data", [])))
 
-    first = True
-
-    def write_records(data: dict):
-        nonlocal first
-        for rec in parse_format_group_records(data.get("data", [])):
-            if not first:
-                with open(results_file, "a", encoding="utf-8") as f:
-                    f.write(",\n")
-            with open(results_file, "a", encoding="utf-8") as f:
-                json.dump(rec, f, ensure_ascii=False, indent=2)
-            first = False
-
-    # page 0
-    write_records(first_data)
+    collect(first_data)
 
     for page_num in tqdm_asyncio(
         range(1, max_pages),
@@ -270,14 +231,150 @@ async def fetch_partition(
             material_type_ids=material_type_ids,
         )
         data = await post_json_with_retries(session, BASE_SEARCH_URL, payload)
-        if not data:
-            continue
-        write_records(data)
+        if data:
+            collect(data)
 
-    with open(results_file, "a", encoding="utf-8") as f:
-        f.write("\n]\n")
+    return records, total_results
 
-    return results_file, total_results
+
+# ---------------------------------------------------------------------
+# Edition enrichment
+# ---------------------------------------------------------------------
+
+async def fetch_edition(session: aiohttp.ClientSession, edition_id: str) -> dict:
+    url = f"{BASE_EDITION_URL}/{edition_id}"
+    async with session.get(url) as response:
+        if response.status != 200:
+            return {}
+        return await response.json()
+
+
+def process_edition(edition: dict) -> dict:
+    data = edition.get("edition", {}) if isinstance(edition, dict) else {}
+
+    subjects = "; ".join(
+        v for k, v in data.items()
+        if isinstance(k, str) and k.startswith("subj") and isinstance(v, str)
+    )
+
+    notes = " ".join(
+        v for k, v in data.items()
+        if isinstance(k, str) and k.startswith("note") and isinstance(v, str)
+    )
+
+    return {
+        "subjects": subjects,
+        "summary": notes,
+        "contributors": data.get("contributors", []),
+    }
+
+
+async def enrich_record(
+    record: dict,
+    session: aiohttp.ClientSession,
+    semaphore: asyncio.Semaphore,
+) -> dict:
+    materials = record.get("materials") or []
+    edition_id = None
+
+    if materials:
+        editions = materials[0].get("editions") or []
+        if editions:
+            edition_id = editions[0].get("id")
+
+    if not edition_id:
+        return record
+
+    async with semaphore:
+        edition_info = await fetch_edition(session, edition_id)
+
+    record.update(process_edition(edition_info))
+    return record
+
+
+async def enrich_records(records: list[dict]) -> list[dict]:
+    if not records:
+        return []
+
+    semaphore = asyncio.Semaphore(HTTP_CONCURRENCY)
+
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        tasks = [
+            enrich_record(record, session, semaphore)
+            for record in records
+        ]
+        return await asyncio.gather(*tasks)
+
+
+# ---------------------------------------------------------------------
+# Catalog orchestration
+# ---------------------------------------------------------------------
+
+DEFAULT_PARTITIONS = [f"{chr(c)}*" for c in range(ord("A"), ord("Z") + 1)] + ["0*"]
+
+
+async def fetch_catalog_snapshot(
+    *,
+    run_dir: Path,
+    partitions: Iterable[str] = DEFAULT_PARTITIONS,
+    location_ids: Optional[int] = DEFAULT_LOCATION_IDS,
+    material_type_ids: Optional[int] = DEFAULT_MATERIAL_TYPE_IDS,
+) -> dict:
+    """
+    Fetch partitions, merge into wr.json, and return a summary.
+    """
+    ensure_dir(run_dir)
+
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        tasks = [
+            fetch_partition(
+                session=session,
+                partition_key=partition_key,
+                location_ids=location_ids,
+                material_type_ids=material_type_ids,
+            )
+            for partition_key in partitions
+        ]
+        results = await asyncio.gather(*tasks)
+
+    merged_records: list[dict] = []
+    reported_total = 0
+
+    for records, total in results:
+        merged_records.extend(records)
+        reported_total += total
+
+    snapshot_path = run_dir / "wr.json"
+    with open(snapshot_path, "w", encoding="utf-8") as f:
+        json.dump(merged_records, f, ensure_ascii=False, indent=2)
+
+    return {
+        "snapshot": str(snapshot_path),
+        "records_written": len(merged_records),
+        "reported_total": reported_total,
+    }
+
+
+async def enrich_snapshot(run_dir: Path) -> Path:
+    """
+    Load wr.json, enrich edition metadata, and write wr_enhanced.json.
+    """
+    snapshot_path = run_dir / "wr.json"
+    if not snapshot_path.exists():
+        raise FileNotFoundError(f"Catalog snapshot not found: {snapshot_path}")
+
+    with open(snapshot_path, "r", encoding="utf-8") as f:
+        records = json.load(f)
+
+    print(f"📚 Enriching {len(records)} records…")
+    enriched = await enrich_records(records)
+
+    enhanced_path = run_dir / "wr_enhanced.json"
+    with open(enhanced_path, "w", encoding="utf-8") as f:
+        json.dump(enriched, f, ensure_ascii=False, indent=2)
+
+    return enhanced_path
+
 
 # ---------------------------------------------------------------------
 # Public exports
@@ -291,6 +388,9 @@ __all__ = [
     "MAX_ES_RESULTS",
     "DEFAULT_LOCATION_IDS",
     "DEFAULT_MATERIAL_TYPE_IDS",
+    "DEFAULT_PARTITIONS",
+    "fetch_catalog_snapshot",
+    "enrich_snapshot",
     "fetch_partition",
     "build_search_payload",
     "parse_format_group_records",

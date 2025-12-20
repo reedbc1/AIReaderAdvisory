@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import faiss
@@ -23,7 +24,40 @@ import numpy as np
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from choose_dir import prompt_for_subdirectory
+# ---------------------------------------------------------------------
+# Local data selection
+# ---------------------------------------------------------------------
+
+def list_subdirectories(directory: str) -> list[str]:
+    base = Path(directory)
+    if not base.is_dir():
+        return []
+    return sorted([p.name for p in base.iterdir() if p.is_dir()])
+
+
+def prompt_for_subdirectory(base_path: str = "data") -> str:
+    subdirs = list_subdirectories(base_path)
+    if not subdirs:
+        raise FileNotFoundError(f"No subdirectories found in: {base_path}")
+
+    if len(subdirs) == 1:
+        return str(Path(base_path) / subdirs[0])
+
+    prompt_lines = ["Choose a folder in data/:"]
+    prompt_lines.extend(
+        [f"  {idx + 1}. {name}" for idx, name in enumerate(subdirs)])
+    prompt_lines.append("Enter number (default 1): ")
+    prompt_text = "\n".join(prompt_lines)
+
+    while True:
+        choice = input(prompt_text).strip()
+        if not choice:
+            return str(Path(base_path) / subdirs[0])
+        if choice.isdigit():
+            idx = int(choice) - 1
+            if 0 <= idx < len(subdirs):
+                return str(Path(base_path) / subdirs[idx])
+        print("Invalid selection. Please try again.\n")
 
 
 # ---------------------------------------------------------------------
@@ -49,8 +83,8 @@ def normalize(vec: np.ndarray) -> np.ndarray:
 # Library loading
 # ---------------------------------------------------------------------
 
-def load_library() -> Tuple[faiss.Index, List[Dict[str, Any]], np.ndarray]:
-    directory = prompt_for_subdirectory()
+def load_library(data_dir: str | None = None) -> Tuple[faiss.Index, List[Dict[str, Any]], np.ndarray]:
+    directory = data_dir or prompt_for_subdirectory()
 
     index = faiss.read_index(f"{directory}/library.index")
 
@@ -181,9 +215,9 @@ def explain_results(
 # Interactive loop
 # ---------------------------------------------------------------------
 
-def run_conversation_loop() -> None:
+def run_conversation_loop(data_dir: str | None = None) -> None:
     client = get_client()
-    index, records, _ = load_library()
+    index, records, _ = load_library(data_dir)
 
     print("\n📚 Reader's Advisory Agent (pure semantic similarity)")
     print("Type 'exit' to quit.\n")
