@@ -1,6 +1,16 @@
-# AIReaderAdvisory
+# AI Library Search
 ## Description
-Uses OpenAI to provide reader's advisory within a specific library.
+- Uses OpenAI to provide recommended library items based on user requests.
+- Currently CLI (Command Line Interface)
+- Currently only finds DVDs (movies, TV shows, documentaries)
+
+## Future Releases
+A future program is in development. Features will include:
+- Search through all items
+- Program's database is updated automatically and regularly
+- User-friendly Web Interface
+- Availability is checked before recommendations are made to guarantee accuracy
+- Links are available to the item in the library catalog
 
 ## What Files Do
 - catalog.py: retrieves library records from Vega catalog
