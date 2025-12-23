@@ -1,3 +1,4 @@
+# WARNING: Only a test branch. Not fully functional.
 # AIReaderAdvisory
 ## Description
 Uses OpenAI to provide reader's advisory within a specific library.
