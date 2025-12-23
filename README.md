@@ -1,3 +1,4 @@
+# WARNING: Only a test branch. Not fully functional.
 # AIReaderAdvisory
 ## Description
 Uses OpenAI embeddings and FAISS to search library items within a specific library.
