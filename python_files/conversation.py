@@ -112,7 +112,7 @@ def search_library(
 
 def rank_results(
     results: List[Dict[str, Any]],
-    top_n: int = 4
+    top_n: int = 20
 ) -> List[Dict[str, Any]]:
 
     # Base ranking: FAISS distance
@@ -141,7 +141,7 @@ def explain_results(
 ) -> str:
 
     response = client.responses.create(
-        model="gpt-5",
+        model="gpt-4o",
         input=[
             {
                 "role": "system",
@@ -150,9 +150,9 @@ def explain_results(
                     "reader's advisory recommendations.\n\n"
                     "Rules:\n"
                     "- Use bullet points\n"
-                    "- Recommend at most  items\n"
+                    "- Recommend at most 5 items\n"
                     "- No more than 2 sentences per item\n"
-                    "- Do NOT invent books\n"
+                    "- Do NOT invent items\n"
                     "- Base explanations only on the provided data"
                 )
             },
