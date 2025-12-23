@@ -1,22 +1,27 @@
 # AI Library Search
+## Overview
+Problem statement
+Solution pitch/vision
+How the program strives to achieve the solution/solve the problem
+
 ## Description
+The program does the following:
+Catalog Retrieval
+- Gets current items and item descriptions from a library catalog (only DVDs currently supported)
+
+Creating embeddings
+- Creates embeddings for each item to later find semantic similarity to user queries
+
+Conversational AI
+- Prompts a user to describe what items they are looking for
+- Embeds query and searches catalog using FAISS
+- Chooses final results with ChatGPT 4o to ensure compatibility with user query
+- Gives final results and explains how they match the query
+
+
 - Uses OpenAI to provide recommended library items based on user requests.
 - Currently CLI (Command Line Interface)
 - Currently only finds DVDs (movies, TV shows, documentaries)
-
-## Future Releases
-A future program is in development. Features will include:
-- Search through all items
-- Program's database is updated automatically and regularly
-- User-friendly Web Interface
-- Availability is checked before recommendations are made to guarantee accuracy
-- Links are available to the item in the library catalog
-
-## What Files Do
-- catalog.py: retrieves library records from Vega catalog
-- embeddings.py: creates embeddings for library records
-- conversation.py: creates conversation with OpenAI API, retrieves library records based on query
-- pipeline.py: integrates all three
 
 ## Running the Program
 - The program is ran by calling pipeline.py
@@ -28,5 +33,19 @@ A future program is in development. Features will include:
 - For example, the following command does all three:
   - python3 pipeline.py --fetch --embed --chat
 - Use the --help tag to also see these descriptions in the shell.
+
+## What Files Do
+- catalog.py: retrieves library records from Vega catalog
+- embeddings.py: creates embeddings for library records
+- conversation.py: creates conversation with OpenAI API, retrieves library records based on query
+- pipeline.py: integrates all three
+
+## Future Releases
+A future program is in development. Features will include:
+- Search through all items
+- Program's database is updated automatically and regularly
+- User-friendly Web Interface
+- Availability is checked before recommendations are made to guarantee accuracy
+- Links are available to the item in the library catalog
 
 
