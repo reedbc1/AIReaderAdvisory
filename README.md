@@ -3,7 +3,9 @@
 Problem statement
 Solution pitch/vision
 How the program strives to achieve the solution/solve the problem
-
+- Uses OpenAI to provide recommended library items based on user requests.
+- Currently CLI (Command Line Interface)
+- Currently only finds DVDs (movies, TV shows, documentaries)
 ## Description
 The program does the following:
 Catalog Retrieval
@@ -17,11 +19,6 @@ Conversational AI
 - Embeds query and searches catalog using FAISS
 - Chooses final results with ChatGPT 4o to ensure compatibility with user query
 - Gives final results and explains how they match the query
-
-
-- Uses OpenAI to provide recommended library items based on user requests.
-- Currently CLI (Command Line Interface)
-- Currently only finds DVDs (movies, TV shows, documentaries)
 
 ## Running the Program
 - The program is ran by calling pipeline.py
