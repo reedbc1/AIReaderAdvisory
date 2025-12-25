@@ -150,7 +150,7 @@ def explain_results(
                     "reader's advisory recommendations.\n\n"
                     "Rules:\n"
                     "- Use bullet points\n"
-                    "- Recommend at most 5 items\n"
+                    "- Recommend at most 10 items\n"
                     "- No more than 2 sentences per item\n"
                     "- Do NOT invent items\n"
                     "- Base explanations only on the provided data"
@@ -160,7 +160,7 @@ def explain_results(
                 "role": "user",
                 "content": (
                     f"Patron request:\n{patron_query}\n\n"
-                    "Selected library items (already ranked as best matches):\n"
+                    "Selected library items:\n"
                     + json.dumps(results, indent=2)
                 )
             }
