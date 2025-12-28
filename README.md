@@ -1,7 +1,8 @@
 # AI Library Search
 ## Overview
 <b>Problems:</b>
-- Making recommendations for library items a patron will like depend on staff knowledge or web searches.
+- Making recommendations for library items a patron depend on staff knowledge or web searches.
+- NoveList is a helpful tool for reader advisory, but it is limited to books and cannot filter by library
 - Customers are often looking for a particular item, but we often have to get it from another library. 
 
 <b>Solution:</b> 
