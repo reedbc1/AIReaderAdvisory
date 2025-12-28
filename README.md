@@ -1,13 +1,14 @@
 # AI Library Search
 ## Overview
-<b>Problem:</b>
-Finding library materials on our online catalog is easy, but in many cases we don't have the exact item a patron wants at our library and need to order it from a different library. Additionally, finding recommendations for patrons based on what they like is easy, but it is often unlikely we have those recommenations available.
+<b>Problems:</b>
+- Making recommendations for library items a patron will like depend on staff knowledge or web searches.
+- Customers are often looking for a particular item, but we often have to get it from another library. 
 
-<b>Solution:</b>  
-This program can search the library catalog and choose items most similar to what the patron is looking for. This can be much faster than manually navigating the online catalog and filters.
+<b>Solution:</b> 
+This program uses AI to only search a specific library for available items related to a customer's query. Rather than ordering items for customers which has a longer turnaround, this program can make it easier to connect customers with relevant materials the same day, increasing circulation of library materials.
 
 <b>Limitations</b>  
-- Currently CLI (Command Line Interface)
+- Currently CLI (Command Line Interface) for prototyping
 - Currently only supports DVDs (movies, TV shows, documentaries)  
 
 ## Description
@@ -20,8 +21,8 @@ Uses OpenAI to provide recommended library items based on user requests. The pro
 - Creates embeddings for each item to later find semantic similarity to user queries
 
 <b>AI Responses</b>
-- Prompts a user to describe what items they   are looking for
-- Embeds query and searches catalog using FAISS
+- Prompts a user to describe what items they are looking for
+- Embeds query and searches catalog using FAISS (Facebook AI Similarity Search)
 - Chooses final results with ChatGPT 4o 
 
 ## Running the Program
