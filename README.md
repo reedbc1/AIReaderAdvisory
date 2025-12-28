@@ -5,11 +5,11 @@
 - Customers are often looking for a particular item, but we often have to get it from another library. 
 
 <b>Solution:</b> 
-This program uses AI to only search a specific library for available items related to a customer's query. Rather than ordering items for customers which has a longer turnaround, this program can make it easier to connect customers with relevant materials the same day, increasing circulation of library materials.
+- This program uses AI to only search a specific library for available items related to a customer's query. Rather than ordering items for customers which has a longer turnaround, this program can make it easier to connect customers with relevant materials the same day, increasing circulation of library materials.
 
-<b>Limitations</b>  
-- Currently CLI (Command Line Interface) for prototyping
-- Currently only supports DVDs (movies, TV shows, documentaries)  
+<b>Current Limitations</b>  
+- CLI (Command Line Interface) for prototyping
+- Only supports DVDs (movies, TV shows, documentaries)  
 
 ## Description
 Uses OpenAI to provide recommended library items based on user requests. The program does the following:  
