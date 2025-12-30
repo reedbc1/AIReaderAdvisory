@@ -1,12 +1,12 @@
 # AI Library Search
 ## Overview
-<b>Problems:</b>
-- Making recommendations for library items a patron depend on staff knowledge or web searches.
-- NoveList is a helpful tool for reader advisory, but it is limited to books and cannot filter by library
-- Customers are often looking for a particular item, but we often have to get it from another library. 
+<b>Problem:</b> It is sometimes difficult to connect customers with physical library items on the same day.
+- Making recommendations for library items depend on staff knowledge or catalog/internet searches.
+- Customers are commonly looking for a particular item, but we often have to get it from another branch. 
+- The library has online reader advisory tools, but they are not able to filter by availability at a single branch.
 
 <b>Solution:</b> 
-- This program uses AI to only search a specific library for available items related to a customer's query. Rather than ordering items for customers which has a longer turnaround, this program can make it easier to connect customers with relevant materials the same day, increasing circulation of library materials.
+- This program uses AI to search a specific library’s collection for available items related to a customer’s query, improving customer convenience while increasing library circulation.
 
 <b>Current Limitations</b>  
 - CLI (Command Line Interface) for prototyping
@@ -16,19 +16,19 @@
 Uses OpenAI to provide recommended library items based on user requests. The program does the following:  
 
 <b>Catalog Retrieval</b>
-- Gets current items and item descriptions from a library catalog (only DVDs currently supported)
+- Gets current items and item descriptions from a library catalog
 
 <b>Creating embeddings</b>
-- Creates embeddings for each item to later find semantic similarity to user queries
+- Creates embeddings for each item to find semantic similarity to user queries
 
 <b>AI Responses</b>
 - Prompts a user to describe what items they are looking for
 - Embeds query and searches catalog using FAISS (Facebook AI Similarity Search)
-- Chooses final results with ChatGPT 4o 
+- Chooses final results with ChatGPT 4o and explains relevance to query
 
 ## Running the Program
-- The program is ran by calling pipeline.py
-- Pipeline uses argparse. You pass arguments when runnind pipeline.py depending on what you want to do.
+- The program runs by calling pipeline.py
+- Pipeline uses argparse. You pass arguments when running pipeline.py depending on what you want to do.
 - Arguments:
   - --fetch "Fetch data from Vega and enrich editions"
   - --embed "Generate embeddings and FAISS index"
