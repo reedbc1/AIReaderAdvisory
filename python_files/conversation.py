@@ -1,12 +1,7 @@
 """
 Fast, stateless interactive conversation loop for the
-WR (Weber Road) Reader's Advisory recommendation agent.
+WR Reader's Advisory recommendation agent.
 
-Design goals:
-- No conversational memory
-- No model-based ranking
-- Minimal tokens
-- Fast response time
 """
 
 from __future__ import annotations
