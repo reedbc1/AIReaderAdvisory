@@ -1,6 +1,7 @@
 # AI Library Search
 ## Overview
-<b>Problem:</b> It is sometimes difficult to connect customers with physical library items on the same day.
+<b>Problem:</b>  
+It is often difficult to connect customers with physical library items on the same day.
 - Making recommendations for library items depend on staff knowledge or catalog/internet searches.
 - Customers are commonly looking for a particular item, but we often have to get it from another branch. 
 - The library has online reader advisory tools, but they are not able to filter by availability at a single branch.
